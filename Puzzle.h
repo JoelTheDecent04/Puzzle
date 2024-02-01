@@ -156,6 +156,7 @@ enum
     Button_Menu     = (1 << 3),
     Button_LMouse   = (1 << 4),
     Button_LShift   = (1 << 5),
+    Button_Console  = (1 << 6),
 };
 
 struct game_input

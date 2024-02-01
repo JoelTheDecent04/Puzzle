@@ -52,6 +52,21 @@ String(const char* Text)
 string{x, sizeof(x) - 1}
 #endif
 
+static bool
+StringsAreEqual(string A, string B)
+{
+    if (A.Length != B.Length)
+        return false;
+    
+    for (u32 I = 0; I < A.Length; I++)
+    {
+        if (A.Text[I] != B.Text[I])
+            return false;
+    }
+    
+    return true;
+}
+
 #if DEBUG
 #define Assert(x) DoAssert(x)
 #else

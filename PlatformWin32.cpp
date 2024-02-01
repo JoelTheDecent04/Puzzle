@@ -295,35 +295,35 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
             Input.Movement = UnitV(Input.Movement);
         
         Input.Cursor = CurrentInputState.Cursor;
-        Input.TextInput = "";
+        Input.TextInput = (char*)GlobalTextInput.c_str();
         
         PreviousInput = Input;
         
-		GlobalScreen.D2DDeviceContext->BeginDraw();
-		
-		GlobalScreen.D2DDeviceContext->Clear(D2D1::ColorF(0));
-		
-		GameUpdateAndRender(GameState, SecondsPerFrame, &Input, Allocator);
-		ResetArena(&TransientArena);
-		
-		GlobalScreen.D2DDeviceContext->EndDraw();
-		GlobalScreen.SwapChain->Present(0, 0);
+        GlobalScreen.D2DDeviceContext->BeginDraw();
+        
+        GlobalScreen.D2DDeviceContext->Clear(D2D1::ColorF(0));
+        
+        GameUpdateAndRender(GameState, SecondsPerFrame, &Input, Allocator);
+        ResetArena(&TransientArena);
+        
+        GlobalScreen.D2DDeviceContext->EndDraw();
+        GlobalScreen.SwapChain->Present(0, 0);
         
         GlobalTextInput.clear();
-		
-		LARGE_INTEGER PerformanceCount;
-		QueryPerformanceCounter(&PerformanceCount);
-		if (PerformanceCount.QuadPart - StartCount.QuadPart > CountsPerFrame)
-		{
-			OutputDebugStringA("Can't keep up\n");
-		}
-		float TimeTaken = (float)(PerformanceCount.QuadPart - StartCount.QuadPart) / CounterFrequency.QuadPart;
-		float CurrentFrameRate = 1.0f / TimeTaken;
         
-		while (PerformanceCount.QuadPart - StartCount.QuadPart < CountsPerFrame)
-		{
-			QueryPerformanceCounter(&PerformanceCount);
-		}
+        LARGE_INTEGER PerformanceCount;
+        QueryPerformanceCounter(&PerformanceCount);
+        if (PerformanceCount.QuadPart - StartCount.QuadPart > CountsPerFrame)
+        {
+            OutputDebugStringA("Can't keep up\n");
+        }
+        float TimeTaken = (float)(PerformanceCount.QuadPart - StartCount.QuadPart) / CounterFrequency.QuadPart;
+        float CurrentFrameRate = 1.0f / TimeTaken;
+        
+        while (PerformanceCount.QuadPart - StartCount.QuadPart < CountsPerFrame)
+        {
+            QueryPerformanceCounter(&PerformanceCount);
+        }
 	}
 }
 
@@ -336,22 +336,15 @@ LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lPa
 			PostQuitMessage(0);
 			return 0;
 		}
-		
-		case WM_KEYDOWN:
-		{
-			if (wParam == 'F')
-			{
-				ToggleFullscreen(Window);
-			}
-		} break;
-        
         case WM_CHAR:
         {
             Assert(wParam < 128);
             char Char = (char)wParam;
+            
+            if (Char == '\r')
+                Char = '\n';
+            
             GlobalTextInput.append(1, Char);
-            
-            
         } break;
         
 		case WM_SIZE:
@@ -384,6 +377,8 @@ KeyboardAndMouseInputState(input_state* InputState, HWND Window)
         InputState->Buttons |= Button_LMouse;
     if (GetAsyncKeyState(VK_LSHIFT) & 0x8000)
         InputState->Buttons |= Button_LShift;
+    if (GetAsyncKeyState(VK_F1) & 0x8000)
+        InputState->Buttons |= Button_Console;
     
     //Movement
     if ((GetAsyncKeyState('A') & 0x8000))

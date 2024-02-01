@@ -118,7 +118,6 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, game_state* GameState, map
             }
         }
         
-        
         for (rigid_body& RigidBody : Map->RigidBodies)
         {
             if (RigidBody.Transparent)
@@ -431,6 +430,8 @@ DrawGame(game_state* GameState, memory_arena* Arena)
 
 void GameUpdateAndRender(game_state* GameState, float DeltaTime, game_input* Input, allocator Allocator)
 {
+    UpdateConsole(&GameState->Console, Input, DeltaTime);
+    
     if (!GameState->Editing && (Input->ButtonDown & Button_Interact))
     {
         //OnEditorOpen();
@@ -441,9 +442,6 @@ void GameUpdateAndRender(game_state* GameState, float DeltaTime, game_input* Inp
         OnEditorClose(GameState);
         GameState->Editing = false;
     }
-    
-    
-    UpdateConsole(&GameState->Console, Input, DeltaTime);
     
     if (GameState->Editing)
     {

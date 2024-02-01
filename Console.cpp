@@ -1,10 +1,19 @@
+void RunCommand(console* Console, string Command)
+{
+    if (StringsAreEqual(Command, String("quit")))
+    {
+        Console->TargetHeight = 0.0f;
+    }
+    
+}
+
 static void
 UpdateConsole(console* Console, game_input* Input, f32 DeltaTime)
 {
     //Check if toggled
-    if (Input->ButtonDown & Button_Menu)
+    bool IsOpen = (Console->TargetHeight > 0.0f);
+    if (Input->ButtonDown & Button_Console)
     {
-        bool IsOpen = Console->TargetHeight > 0.0f;
         if (IsOpen)
             Console->TargetHeight = 0.0f;
         else
@@ -36,25 +45,36 @@ UpdateConsole(console* Console, game_input* Input, f32 DeltaTime)
     }
     
     //Update input
-    for (char* TextInput = Input->TextInput;
-         *TextInput;
-         TextInput++)
+    if (IsOpen)
     {
-        char C = *TextInput;
-        if (C == '\n')
-        {
-            //RunCommand();
-            
-            Console->InputBufferLength = 0;
-        }
+        //Clear input to prevent other actions
+        Input->Button = 0;
+        Input->ButtonDown = 0;
+        Input->ButtonUp = 0;
+        Input->Movement = {};
         
-        if (Console->InputBufferLength + 1 < ArrayCount(Console->InputBuffer))
+        for (char* TextInput = Input->TextInput;
+             *TextInput;
+             TextInput++)
         {
-            Console->InputBuffer[Console->InputBufferLength++] = C;
+            char C = *TextInput;
+            if (C == '\n')
+            {
+                string Command = {Console->InputBuffer, Console->InputBufferLength};
+                RunCommand(Console, Command);
+                
+                Console->InputBufferLength = 0;
+            }
+            else
+            {
+                if (Console->InputBufferLength + 1 < ArrayCount(Console->InputBuffer))
+                {
+                    Console->InputBuffer[Console->InputBufferLength++] = C;
+                }
+            }
         }
     }
 }
-
 static void
 DrawConsole(console* Console)
 {
