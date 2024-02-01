@@ -445,12 +445,8 @@ void GameUpdateAndRender(game_state* GameState, float DeltaTime, game_input* Inp
         GameState->Editing = false;
     }
     
-    if (Input->Buttons.Menu)
-    {
-        ToggleConsole(&GameState->Console);
-    }
     
-    UpdateConsole(&GameState->Console, DeltaTime);
+    UpdateConsole(&GameState->Console, Input, DeltaTime);
     
     if (GameState->Editing)
     {
@@ -471,5 +467,5 @@ void GameUpdateAndRender(game_state* GameState, float DeltaTime, game_input* Inp
                                      Allocator.Permanent->Used, Allocator.Transient->Used);
     PlatformDrawText(MemoryString, V2(0.35f, 0.0f), V2(0.3f, 0.02f), 0xFF000000);
     
-    DrawConsole(GameState->Console);
+    DrawConsole(&GameState->Console);
 }

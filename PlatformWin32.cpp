@@ -10,6 +10,8 @@
 #include <wincodec.h>
 #include <dwrite.h>
 
+#include <string>
+
 #define DEBUG 1
 #define USE_GAME_INPUT 0
 
@@ -76,6 +78,7 @@ struct game_input
         bool Menu;
 	} Controls;
     
+    char* TextInput;
 	v2 Cursor;
 };
 
@@ -107,11 +110,12 @@ struct d2d_texture
 d2d_texture	GlobalTextures[ 1 ];
 win32_d2d_screen_buffer	GlobalScreen;
 
+std::string GlobalTextInput;
+
 void ToggleFullscreen(HWND Window);
 //int LoadTextures(texture_info* Requests, int Count, d2d_texture* Textures);
 
 LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
-DWORD WINAPI MultiplayerClientThread(LPVOID);
 
 int BufferWidth = 1280, BufferHeight = 720;
 
@@ -289,6 +293,9 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 		
 		game_input CurrentInput = {};
         
+        //TODO: Fix this
+        CurrentInput.TextInput = (char*)GlobalTextInput.c_str();
+        
 		if (GetActiveWindow())
 		{
 #if !USE_GAME_INPUT
@@ -398,6 +405,7 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 		GlobalScreen.D2DDeviceContext->EndDraw();
 		GlobalScreen.SwapChain->Present(0, 0);
         
+        GlobalTextInput.clear();
 		
 		LARGE_INTEGER PerformanceCount;
 		QueryPerformanceCounter(&PerformanceCount);
@@ -433,6 +441,13 @@ LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lPa
 				ToggleFullscreen(Window);
 			}
 		} break;
+        
+        case WM_CHAR:
+        {
+            Assert(wParam < 128);
+            char Char = (char)wParam;
+            GlobalTextInput.append(1, Char);
+        } break;
         
 		case WM_SIZE:
 		{

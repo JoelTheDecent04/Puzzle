@@ -127,6 +127,8 @@ struct console
 {
     f32 Height;
     f32 TargetHeight;
+    char InputBuffer[256];
+    u32  InputBufferLength;
 };
 
 struct game_state
