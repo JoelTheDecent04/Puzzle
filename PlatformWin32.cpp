@@ -13,9 +13,9 @@
 #include <string>
 
 #define DEBUG 1
-#define USE_GAME_INPUT 0
+#define USE_GAME_INPUT_API 0
 
-#if USE_GAME_INPUT
+#if USE_GAME_INPUT_API
 #include <GameInput.h>
 #pragma comment(lib, "GameInput.lib")
 #endif
@@ -41,13 +41,13 @@ span<u8> Win32LoadFile(memory_arena* Arena, char* Path);
 void Win32SaveFile(char* Path, span<u8> Data);
 
 #define PlatformDrawTexture Win32DrawTexture
-#define PlatformRectangle Win32Rectangle
-#define PlatformLine Win32Line
-#define PlatformDrawText Win32DrawText
-#define PlatformDebugOut Win32DebugOut
-#define PlatformSleep Win32Sleep
-#define PlatformLoadFile Win32LoadFile
-#define PlatformSaveFile Win32SaveFile
+#define PlatformRectangle   Win32Rectangle
+#define PlatformLine        Win32Line
+#define PlatformDrawText    Win32DrawText
+#define PlatformDebugOut    Win32DebugOut
+#define PlatformSleep       Win32Sleep
+#define PlatformLoadFile    Win32LoadFile
+#define PlatformSaveFile    Win32SaveFile
 
 //TODO: Fix
 static inline void 
@@ -55,7 +55,6 @@ Win32Rectangle(rect Rect, u32 FillColor, u32 BorderColor = 0)
 {
 	Win32Rectangle(Rect.MinCorner, Rect.MaxCorner - Rect.MinCorner, FillColor, BorderColor);
 }
-
 
 #include "GUI.cpp"
 #include "Puzzle.cpp"
@@ -95,7 +94,11 @@ struct input_state
     v2 Movement;
 };
 
-input_state GetKeyboardAndMouseInputState(HWND Window);
+void KeyboardAndMouseInputState(input_state* InputState, HWND Window);
+
+#if USE_GAME_INPUT_API
+void ControllerState(input_state* InputState, IGameInput* GameInput);
+#endif
 
 LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
 
@@ -140,8 +143,7 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 	ID3D11DeviceContext* D3DDeviceContext;
 	D3D_FEATURE_LEVEL FeatureLevel;
     
-	D3D11CreateDevice(
-                      0, //Default adapter 
+	D3D11CreateDevice(0, //Default adapter 
                       D3D_DRIVER_TYPE_HARDWARE,
                       0, //No software driver
                       D3D11_CREATE_DEVICE_BGRA_SUPPORT, //Creation flags
@@ -150,8 +152,7 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
                       D3D11_SDK_VERSION,
                       &D3DDevice,
                       &FeatureLevel,
-                      &D3DDeviceContext
-                      );
+                      &D3DDeviceContext);
     
 	IDXGIDevice* DxgiDevice;
 	D3DDevice->QueryInterface(IID_PPV_ARGS(&DxgiDevice));
@@ -227,15 +228,7 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
     
 	//GlobalScreen.Transform = D2D1::Matrix3x2F((f32)BufferWidth, 0, 0, -(f32)BufferHeight, 0, (f32)BufferHeight);
     
-#if USE_GAME_INPUT
-	IGameInput* GameInput = 0;
-	GameInputCreate(&GameInput);
-    
-	IGameInputDevice* GameInputDevice = 0;
-#endif
-    
 	//LoadTextures(TextureLoadRequests, ArrayLength(TextureLoadRequests), GlobalTextures);
-    
 	
 	memory_arena TransientArena = Win32CreateMemoryArena(Megabytes(16), TRANSIENT);
 	memory_arena PermanentArena = Win32CreateMemoryArena(Megabytes(16), PERMANENT);
@@ -246,6 +239,13 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 	allocator Allocator = {};
 	Allocator.Transient = &TransientArena;
 	Allocator.Permanent = &PermanentArena;
+    
+#if USE_GAME_INPUT_API
+    LOG("Using GameInput API");
+    
+	IGameInput* GameInput = 0;
+	GameInputCreate(&GameInput);
+#endif
     
 	game_state* GameState = GameInitialise(Allocator);
 	
@@ -276,74 +276,28 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 		}
         
         game_input Input = {};
-		
+		input_state CurrentInputState = {};
+        
 		if (GetActiveWindow())
 		{
-#if !USE_GAME_INPUT
-            input_state CurrentInputState = GetKeyboardAndMouseInputState(Window);
-            
-            
-            Input.Button = CurrentInputState.Buttons;
-            Input.ButtonDown = (~PreviousInput.Button & CurrentInputState.Buttons);
-            Input.ButtonUp = (PreviousInput.Button & ~CurrentInputState.Buttons);
-            Input.Movement = CurrentInputState.Movement;
-            Input.Cursor = CurrentInputState.Cursor;
-            Input.TextInput = "";
-            
-#else			
-			IGameInputReading* GameInputCurrentReading;
-			HRESULT Result = GameInput->GetCurrentReading(GameInputKindController | GameInputKindGamepad, GameInputDevice, &GameInputCurrentReading);
-			if (SUCCEEDED(Result))
-			{
-				if (!GameInputDevice)
-				{
-					GameInputCurrentReading->GetDevice(&GameInputDevice);
-				}
-                
-				GameInputKind InputKind = GameInputCurrentReading->GetInputKind();
-                
-				f32 ControllerXAxis = 0.0f;
-				bool JumpDown = false;
-                
-				if (InputKind & GameInputKindGamepad)
-				{
-					GameInputGamepadState Gamepad;
-					GameInputCurrentReading->GetGamepadState(&Gamepad);
-                    
-					ControllerXAxis = Gamepad.leftThumbstickX;
-					JumpDown = (Gamepad.buttons & GameInputGamepadA);
-				}
-				else if (InputKind & GameInputKindControllerAxis)
-				{
-					f32 ControllerRawXAxis = 0.5f;
-					if (GameInputCurrentReading->GetControllerAxisState(1, &ControllerRawXAxis) == 1)
-					{
-						ControllerXAxis = -1.0f + 2.0f * ControllerRawXAxis;
-					}
-                    
-					bool ButtonStates[10] = {};
-					GameInputCurrentReading->GetControllerButtonState(ArrayLength(ButtonStates), ButtonStates);
-					JumpDown = ButtonStates[1];
-				}
-				
-				CurrentInput.Controls.MovementX = (Abs(ControllerXAxis) > 0.2f) ? ControllerXAxis : 0.0f;
-                
-				CurrentInput.Controls.Jump = JumpDown;
-				CurrentInput.Buttons.Jump = JumpDown && !PreviousInput.Controls.Jump;
-				
-				GameInputCurrentReading->Release();
-			}
-			else
-			{
-				if (GameInputDevice)
-				{
-					GameInputDevice->Release();
-					GameInputDevice = 0;
-				}
-			}
+            KeyboardAndMouseInputState(&CurrentInputState, Window);
+#if USE_GAME_INPUT_API
+            ControllerState(&CurrentInputState, GameInput);
 #endif
-			PreviousInput = Input;
-		}
+        }
+        
+        Input.Button = CurrentInputState.Buttons;
+        Input.ButtonDown = (~PreviousInput.Button & CurrentInputState.Buttons);
+        Input.ButtonUp = (PreviousInput.Button & ~CurrentInputState.Buttons);
+        Input.Movement = CurrentInputState.Movement;
+        
+        if (LengthSq(Input.Movement) > 1.0f)
+            Input.Movement = UnitV(Input.Movement);
+        
+        Input.Cursor = CurrentInputState.Cursor;
+        Input.TextInput = "";
+        
+        PreviousInput = Input;
         
 		GlobalScreen.D2DDeviceContext->BeginDraw();
 		
@@ -416,28 +370,26 @@ LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lPa
 	return 0;
 }
 
-static input_state
-GetKeyboardAndMouseInputState(HWND Window)
+static void
+KeyboardAndMouseInputState(input_state* InputState, HWND Window)
 {
-    input_state InputState = {};
-    
     //Buttons
     if (GetAsyncKeyState('W') & 0x8000)
-        InputState.Buttons |= Button_Jump;
+        InputState->Buttons |= Button_Jump;
     if (GetAsyncKeyState('E') & 0x8000)
-        InputState.Buttons |= Button_Interact;
+        InputState->Buttons |= Button_Interact;
     if (GetAsyncKeyState('C') & 0x8000)
-        InputState.Buttons |= Button_Menu;
+        InputState->Buttons |= Button_Menu;
     if (GetAsyncKeyState(VK_LBUTTON) & 0x8000)
-        InputState.Buttons |= Button_LMouse;
+        InputState->Buttons |= Button_LMouse;
     if (GetAsyncKeyState(VK_LSHIFT) & 0x8000)
-        InputState.Buttons |= Button_LShift;
+        InputState->Buttons |= Button_LShift;
     
     //Movement
     if ((GetAsyncKeyState('A') & 0x8000))
-        InputState.Movement.X -= 1.0f;
+        InputState->Movement.X -= 1.0f;
     if ((GetAsyncKeyState('D') & 0x8000))
-        InputState.Movement.X += 1.0f;
+        InputState->Movement.X += 1.0f;
     
     //Cursor
     POINT CursorPos = {};
@@ -449,12 +401,64 @@ GetKeyboardAndMouseInputState(HWND Window)
     
     if (ClientRect.right > 0 && ClientRect.bottom > 0)
     {
-        InputState.Cursor.X = (f32)CursorPos.x / ClientRect.right;
-        InputState.Cursor.Y = (f32)(ClientRect.bottom - CursorPos.y) / ClientRect.right;
+        InputState->Cursor.X += (f32)CursorPos.x / ClientRect.right;
+        InputState->Cursor.Y += (f32)(ClientRect.bottom - CursorPos.y) / ClientRect.right;
+    }
+}
+
+#if USE_GAME_INPUT_API
+static void
+ControllerState(input_state* InputState, IGameInput* GameInput)
+{
+    IGameInputReading* GameInputCurrentReading;
+    HRESULT Result = GameInput->GetCurrentReading(GameInputKindController | GameInputKindGamepad, 
+                                                  0, &GameInputCurrentReading);
+    if (FAILED(Result)) return;
+    
+    //TODO: Disallow device being changed
+    /*
+    if (!GameInputDevice)
+    {
+        GameInputCurrentReading->GetDevice(&GameInputDevice);
+    }
+*/
+    
+    GameInputKind InputKind = GameInputCurrentReading->GetInputKind();
+    
+    f32 AnalogStickDeadzone = 0.2f;
+    
+    if (InputKind & GameInputKindGamepad)
+    {
+        GameInputGamepadState Gamepad;
+        GameInputCurrentReading->GetGamepadState(&Gamepad);
+        
+        if (Abs(Gamepad.leftThumbstickX) > AnalogStickDeadzone)
+            InputState->Movement.X += Gamepad.leftThumbstickX;
+        
+        if (Gamepad.buttons & GameInputGamepadA)
+            InputState->Buttons |= Button_Jump;
+    }
+    else if (InputKind & GameInputKindControllerAxis)
+    {
+        f32 ControllerRawXAxis;
+        if (GameInputCurrentReading->GetControllerAxisState(1, &ControllerRawXAxis) == 1)
+        {
+            f32 ControllerXAxis = -1.0f + 2.0f * ControllerRawXAxis;
+            
+            if (Abs(ControllerXAxis) > AnalogStickDeadzone) 
+                InputState->Movement.X += ControllerXAxis;
+        }
+        
+        bool ButtonStates[10] = {};
+        GameInputCurrentReading->GetControllerButtonState(ArrayCount(ButtonStates), ButtonStates);
+        
+        if (ButtonStates[1])
+            InputState->Buttons |= Button_Jump;
     }
     
-    return InputState;
+    GameInputCurrentReading->Release();
 }
+#endif
 
 void ToggleFullscreen(HWND Window)
 {
