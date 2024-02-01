@@ -23,6 +23,10 @@
 #include "Utilities.cpp"
 #include "Maths.cpp"
 
+memory_arena GlobalDebugArena;
+#define LOG(...) \
+OutputDebugStringA(ArenaPrint(&GlobalDebugArena, __VA_ARGS__).Text);
+
 //Platform functions
 void Win32DrawTexture(int Identifier, int Index, v2 Position, v2 Size, float Angle);
 void Win32Rectangle(v2 Position, v2 Dimensions, u32 FillColour, u32 BorderColour = 0);
@@ -82,7 +86,6 @@ struct game_input
 	v2 Cursor;
 };
 
-memory_arena GlobalDebugArena;
 
 #include "GUI.cpp"
 #include "Puzzle.cpp"
@@ -258,6 +261,8 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 	memory_arena TransientArena = Win32CreateMemoryArena(Megabytes(16), TRANSIENT);
 	memory_arena PermanentArena = Win32CreateMemoryArena(Megabytes(16), PERMANENT);
 	GlobalDebugArena = Win32CreateMemoryArena(Megabytes(1), PERMANENT);
+    
+    LOG("Logging started\n");
     
 	allocator Allocator = {};
 	Allocator.Transient = &TransientArena;
@@ -447,6 +452,8 @@ LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lPa
             Assert(wParam < 128);
             char Char = (char)wParam;
             GlobalTextInput.append(1, Char);
+            
+            
         } break;
         
 		case WM_SIZE:
