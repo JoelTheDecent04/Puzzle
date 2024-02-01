@@ -127,8 +127,12 @@ struct console
 {
     f32 Height;
     f32 TargetHeight;
+    
     char InputBuffer[256];
     u32  InputBufferLength;
+    
+    bool CursorOn;
+    f32  CursorCountdown;
 };
 
 struct game_state

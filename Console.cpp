@@ -25,6 +25,16 @@ UpdateConsole(console* Console, game_input* Input, f32 DeltaTime)
         Console->Height = Max(Console->TargetHeight, Console->Height - dHeight);
     }
     
+    //Update cursor
+    f32 CursorTime = 0.4f;
+    
+    Console->CursorCountdown -= DeltaTime;
+    if (Console->CursorCountdown < 0.0f)
+    {
+        Console->CursorCountdown += CursorTime;
+        Console->CursorOn = !Console->CursorOn;
+    }
+    
     //Update input
     for (char* TextInput = Input->TextInput;
          *TextInput;
