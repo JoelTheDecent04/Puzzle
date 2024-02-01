@@ -2,7 +2,7 @@ static void
 UpdateConsole(console* Console, game_input* Input, f32 DeltaTime)
 {
     //Check if toggled
-    if (Input->Buttons.Menu)
+    if (Input->ButtonDown & Button_Menu)
     {
         bool IsOpen = Console->TargetHeight > 0.0f;
         if (IsOpen)

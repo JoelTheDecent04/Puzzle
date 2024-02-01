@@ -23,6 +23,8 @@
 #include "Utilities.cpp"
 #include "Maths.cpp"
 
+#include "Puzzle.h"
+
 memory_arena GlobalDebugArena;
 #define LOG(...) \
 OutputDebugStringA(ArenaPrint(&GlobalDebugArena, __VA_ARGS__).Text);
@@ -53,38 +55,6 @@ Win32Rectangle(rect Rect, u32 FillColor, u32 BorderColor = 0)
 {
 	Win32Rectangle(Rect.MinCorner, Rect.MaxCorner - Rect.MinCorner, FillColor, BorderColor);
 }
-
-struct game_input
-{
-	struct
-	{
-		bool OpenShop;
-		bool NextWave;
-		bool Interact;
-		bool ShowHideMap;
-		bool MouseLeft;
-		bool MouseDownLeft;
-		bool MouseUpLeft;
-		bool Jump;
-        bool Menu;
-        
-		bool TestKey;
-	} Buttons;
-	struct
-	{
-		float MovementX; //normalised values [-1, 1]
-		float MovementY;
-		bool Jump;
-        
-		bool Test;
-		bool Interact;
-		bool LShift;
-        bool Menu;
-	} Controls;
-    
-    char* TextInput;
-	v2 Cursor;
-};
 
 
 #include "GUI.cpp"
@@ -117,6 +87,15 @@ std::string GlobalTextInput;
 
 void ToggleFullscreen(HWND Window);
 //int LoadTextures(texture_info* Requests, int Count, d2d_texture* Textures);
+
+struct input_state
+{
+    button_state Buttons;
+    v2 Cursor;
+    v2 Movement;
+};
+
+input_state GetKeyboardAndMouseInputState(HWND Window);
 
 LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
 
@@ -295,55 +274,21 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 			TranslateMessage(&Message);
 			DispatchMessage(&Message);
 		}
+        
+        game_input Input = {};
 		
-		game_input CurrentInput = {};
-        
-        //TODO: Fix this
-        CurrentInput.TextInput = (char*)GlobalTextInput.c_str();
-        
 		if (GetActiveWindow())
 		{
 #if !USE_GAME_INPUT
-			CurrentInput.Controls.Jump = (GetAsyncKeyState('W') & 0x8000);
-			CurrentInput.Buttons.Jump = (CurrentInput.Controls.Jump && !PreviousInput.Controls.Jump);
+            input_state CurrentInputState = GetKeyboardAndMouseInputState(Window);
             
-			if ((GetAsyncKeyState('A') & 0x8000))
-			{
-				CurrentInput.Controls.MovementX -= 1.0f;
-			}
-			if ((GetAsyncKeyState('D') & 0x8000))
-			{
-				CurrentInput.Controls.MovementX += 1.0f;
-			}
             
-			bool MouseIsDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000);
-			bool MouseWasDown = PreviousInput.Buttons.MouseLeft;
-            
-			CurrentInput.Buttons.MouseLeft = MouseIsDown;
-			CurrentInput.Buttons.MouseUpLeft = (MouseWasDown && !MouseIsDown);
-			CurrentInput.Buttons.MouseDownLeft = (!MouseWasDown && MouseIsDown);
-            
-			bool InteractKeyDown = GetAsyncKeyState('E') & 0x8000;
-			CurrentInput.Buttons.Interact = InteractKeyDown && (!PreviousInput.Controls.Interact);
-			CurrentInput.Controls.Interact = InteractKeyDown;
-            
-			bool MenuKeyDown = GetAsyncKeyState('C') & 0x8000;
-			CurrentInput.Buttons.Menu = MenuKeyDown && (!PreviousInput.Controls.Menu);
-			CurrentInput.Controls.Menu = MenuKeyDown;
-            
-			CurrentInput.Controls.LShift = (GetAsyncKeyState(VK_LSHIFT) & 0x8000);
-            
-			POINT CursorPos = {};
-			GetCursorPos(&CursorPos);
-			ScreenToClient(Window, &CursorPos);
-			
-			GetClientRect(Window, &ClientRect);
-            
-			if (ClientRect.right > 0 && ClientRect.bottom > 0)
-			{
-				CurrentInput.Cursor.X = (f32)CursorPos.x / ClientRect.right;
-				CurrentInput.Cursor.Y = (f32)(ClientRect.bottom - CursorPos.y) / ClientRect.right;
-			}
+            Input.Button = CurrentInputState.Buttons;
+            Input.ButtonDown = (~PreviousInput.Button & CurrentInputState.Buttons);
+            Input.ButtonUp = (PreviousInput.Button & ~CurrentInputState.Buttons);
+            Input.Movement = CurrentInputState.Movement;
+            Input.Cursor = CurrentInputState.Cursor;
+            Input.TextInput = "";
             
 #else			
 			IGameInputReading* GameInputCurrentReading;
@@ -397,14 +342,14 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 				}
 			}
 #endif
-			PreviousInput = CurrentInput;
+			PreviousInput = Input;
 		}
         
 		GlobalScreen.D2DDeviceContext->BeginDraw();
 		
 		GlobalScreen.D2DDeviceContext->Clear(D2D1::ColorF(0));
 		
-		GameUpdateAndRender(GameState, SecondsPerFrame, &CurrentInput, Allocator);
+		GameUpdateAndRender(GameState, SecondsPerFrame, &Input, Allocator);
 		ResetArena(&TransientArena);
 		
 		GlobalScreen.D2DDeviceContext->EndDraw();
@@ -427,7 +372,6 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 		}
 	}
 }
-
 
 LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam)
 {
@@ -472,6 +416,45 @@ LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lPa
 	return 0;
 }
 
+static input_state
+GetKeyboardAndMouseInputState(HWND Window)
+{
+    input_state InputState = {};
+    
+    //Buttons
+    if (GetAsyncKeyState('W') & 0x8000)
+        InputState.Buttons |= Button_Jump;
+    if (GetAsyncKeyState('E') & 0x8000)
+        InputState.Buttons |= Button_Interact;
+    if (GetAsyncKeyState('C') & 0x8000)
+        InputState.Buttons |= Button_Menu;
+    if (GetAsyncKeyState(VK_LBUTTON) & 0x8000)
+        InputState.Buttons |= Button_LMouse;
+    if (GetAsyncKeyState(VK_LSHIFT) & 0x8000)
+        InputState.Buttons |= Button_LShift;
+    
+    //Movement
+    if ((GetAsyncKeyState('A') & 0x8000))
+        InputState.Movement.X -= 1.0f;
+    if ((GetAsyncKeyState('D') & 0x8000))
+        InputState.Movement.X += 1.0f;
+    
+    //Cursor
+    POINT CursorPos = {};
+    GetCursorPos(&CursorPos);
+    ScreenToClient(Window, &CursorPos);
+    
+    RECT ClientRect;
+    GetClientRect(Window, &ClientRect);
+    
+    if (ClientRect.right > 0 && ClientRect.bottom > 0)
+    {
+        InputState.Cursor.X = (f32)CursorPos.x / ClientRect.right;
+        InputState.Cursor.Y = (f32)(ClientRect.bottom - CursorPos.y) / ClientRect.right;
+    }
+    
+    return InputState;
+}
 
 void ToggleFullscreen(HWND Window)
 {
@@ -724,16 +707,11 @@ Win32LoadFile(memory_arena* Arena, char* Path)
 #if DEBUG
 	if (Success)
 	{
-		OutputDebugStringA("Loaded file: ");
-		OutputDebugStringA(Path);
-		OutputDebugStringA("\n");
-        
+        LOG("Opened file: %s", Path);
 	}
 	else
 	{
-		OutputDebugStringA("Could not load file: ");
-		OutputDebugStringA(Path);
-		OutputDebugStringA("\n");
+        LOG("Could not open file: %s", Path); 
 	}
 #endif
     
@@ -760,15 +738,11 @@ Win32SaveFile(char* Path, span<u8> Data)
 #if DEBUG
 	if (Success)
 	{
-		OutputDebugStringA("Saved file: ");
-		OutputDebugStringA(Path);
-		OutputDebugStringA("\n");
+        LOG("Saved file: %s", Path);
 	}
 	else
 	{
-		OutputDebugStringA("Could not save file: ");
-		OutputDebugStringA(Path);
-		OutputDebugStringA("\n");
+        LOG("Could not save file: %s", Path); 
 	}
 #endif
 }

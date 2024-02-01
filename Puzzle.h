@@ -147,3 +147,24 @@ struct game_state
     
     console Console;
 };
+
+typedef u32 button_state;
+enum
+{
+    Button_Jump     = (1 << 1),
+    Button_Interact = (1 << 2),
+    Button_Menu     = (1 << 3),
+    Button_LMouse   = (1 << 4),
+    Button_LShift   = (1 << 5),
+};
+
+struct game_input
+{
+    button_state Button;
+    button_state ButtonDown;
+    button_state ButtonUp;
+    
+    char* TextInput;
+    v2 Movement;
+	v2 Cursor;
+};

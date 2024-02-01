@@ -1,8 +1,6 @@
 //Bugs
 //if modifications are made to the level and the file is reloaded, nothing can be selected
 
-
-#include "Puzzle.h"
 #include "Editor.cpp"
 #include "Physics.cpp"
 #include "Console.cpp"
@@ -239,8 +237,7 @@ GameInitialise(allocator Allocator)
 static void
 SimulateGame(game_state* GameState, game_input* Input, f32 DeltaTime, memory_arena* Arena)
 {
-    v2 Movement = {};
-    Movement.X = Input->Controls.MovementX;
+    v2 Movement = Input->Movement;
     
     for (map_element& MapElement : GameState->Map->Elements)
     {
@@ -274,7 +271,7 @@ SimulateGame(game_state* GameState, game_input* Input, f32 DeltaTime, memory_are
     {
         rigid_body* Controlling = GameState->Map->RigidBodies + GameState->Map->Player.RigidBodyIndex;
         
-        if (Input->Buttons.Jump)
+        if (Input->ButtonDown & Button_Jump)
         {
             Controlling->dP.Y = 1.5f;
         }
@@ -434,12 +431,12 @@ DrawGame(game_state* GameState, memory_arena* Arena)
 
 void GameUpdateAndRender(game_state* GameState, float DeltaTime, game_input* Input, allocator Allocator)
 {
-    if (!GameState->Editing && Input->Buttons.Interact)
+    if (!GameState->Editing && (Input->ButtonDown & Button_Interact))
     {
         //OnEditorOpen();
         GameState->Editing = true;
     }
-    else if (GameState->Editing && Input->Buttons.Interact)
+    else if (GameState->Editing && (Input->ButtonDown & Button_Interact))
     {
         OnEditorClose(GameState);
         GameState->Editing = false;

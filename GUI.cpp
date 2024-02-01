@@ -22,8 +22,8 @@ BeginGUI(game_input* Input)
 	if (GlobalGUIState.Active >= GlobalGUIIdentifierCounter)
 		GlobalGUIState.Active = 0;
     
-	GlobalGUIState.MouseWentDown = Input->Buttons.MouseDownLeft;
-	GlobalGUIState.MouseWentUp = Input->Buttons.MouseUpLeft;
+	GlobalGUIState.MouseWentDown = (Input->ButtonDown & Button_LMouse);
+	GlobalGUIState.MouseWentUp = (Input->ButtonUp & Button_LMouse);
 	GlobalGUIState.CursorPosition = Input->Cursor;
 	GlobalGUIState.InputHandled = false;
     

@@ -167,7 +167,7 @@ RunEditor(game_state* GameState, game_input* Input, allocator Allocator)
     map_editor* Editor = &GameState->Editor;
     map_desc* Map = GameState->Map;
     
-    if (!Input->Buttons.MouseLeft)
+    if (!(Input->Button & Button_LMouse))
     {
         Editor->Dragging = false;
     }
@@ -196,7 +196,7 @@ RunEditor(game_state* GameState, game_input* Input, allocator Allocator)
         {
             v2 NewPosition = Input->Cursor + Editor->CursorToElement;
             
-            if (Input->Controls.LShift)
+            if (Input->Button & Button_LShift)
             {
                 v2 NewBottomLeft = NewPosition - 0.5f * SelectedElement->Shape.Size;
                 v2 NewBottomLeftRounded = { Round(NewBottomLeft.X / TileSize.X) * TileSize.X, Round(NewBottomLeft.Y / TileSize.Y) * TileSize.Y };
@@ -461,7 +461,7 @@ RunEditor(game_state* GameState, game_input* Input, allocator Allocator)
     }
     
     //Clicking another element
-    if (Input->Buttons.MouseDownLeft && !GUIInputIsBeingHandled())
+    if ((Input->Button & Button_LMouse) && !GUIInputIsBeingHandled())
     {
         for (u32 MapElementIndex = 0; MapElementIndex < Map->Elements.Count; MapElementIndex++)
         {
