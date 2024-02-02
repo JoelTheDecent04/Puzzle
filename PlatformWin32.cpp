@@ -27,7 +27,7 @@
 
 memory_arena GlobalDebugArena;
 #define LOG(...) \
-OutputDebugStringA(ArenaPrint(&GlobalDebugArena, __VA_ARGS__).Text);
+OutputDebugStringA(ArenaPrint(&GlobalDebugArena, __VA_ARGS__).Text)
 
 //Platform functions
 void Win32DrawTexture(int Identifier, int Index, v2 Position, v2 Size, float Angle);
@@ -86,6 +86,8 @@ std::string GlobalTextInput;
 
 void ToggleFullscreen(HWND Window);
 //int LoadTextures(texture_info* Requests, int Count, d2d_texture* Textures);
+ID2D1Bitmap1* Win32LoadBitmap(char* Path, memory_arena* Arena);
+void DrawBitmap(rect Destination, rect Source, ID2D1Bitmap1* Bitmap);
 
 struct input_state
 {
@@ -258,7 +260,9 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
     
 	game_input PreviousInput = {};
     
-	while (true)
+    ID2D1Bitmap1* Bitmap = Win32LoadBitmap("assets/testasset.bmp", &TransientArena);
+    
+    while (true)
 	{
 		LARGE_INTEGER StartCount;
 		QueryPerformanceCounter(&StartCount);
@@ -305,6 +309,10 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
         
         GameUpdateAndRender(GameState, SecondsPerFrame, &Input, Allocator);
         ResetArena(&TransientArena);
+        
+        rect BitmapDest = {{0.0f, 0.0f}, {1.0f, 0.5625f}};
+        rect BitmapSrc  = {{0.0f, 0.0f}, {700.0f, 350.0f}};
+        DrawBitmap(BitmapDest, BitmapSrc, Bitmap);
         
         GlobalScreen.D2DDeviceContext->EndDraw();
         GlobalScreen.SwapChain->Present(0, 0);
@@ -490,258 +498,298 @@ void ToggleFullscreen(HWND Window)
 	}
 }
 
+static ID2D1Bitmap1*
+Win32LoadBitmap(char* Path, memory_arena* Arena)
+{
+    Assert(Arena->Type == TRANSIENT);
+    
+    ID2D1Bitmap1* Bitmap = 0;
+    
+    span<u8> Data = Win32LoadFile(Arena, Path);
+    if (Data.Memory)
+    {
+        BITMAPFILEHEADER* Header = (BITMAPFILEHEADER*)Data.Memory;
+        BITMAPINFOHEADER* InfoHeader = (BITMAPINFOHEADER*)(Data.Memory + 0x0E);
+        
+        u8* Pixels = Data + Header->bfOffBits;
+        i32 Width = InfoHeader->biWidth;
+        i32 Height = InfoHeader->biHeight;
+        
+        D2D1_BITMAP_PROPERTIES1 BitmapProperties = {};
+        BitmapProperties.pixelFormat.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        BitmapProperties.pixelFormat.alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
+        
+        HRESULT Result = GlobalScreen.D2DDeviceContext->CreateBitmap(D2D1::SizeU(Width, Height),
+                                                                     Pixels, Width * 4, BitmapProperties,
+                                                                     &Bitmap);
+        int x = 3;
+    }
+    if (!Bitmap)
+    {
+        LOG("Could not load texture %s\n", Path);
+    }
+    
+    return Bitmap;
+}
+
+static void
+DrawBitmap(rect Destination, rect Source, ID2D1Bitmap1* Bitmap)
+{
+    D2D1::Matrix3x2F Transform = D2D1::Matrix3x2F((f32)BufferWidth, 0, 0, -(f32)BufferWidth, 0, (f32)BufferHeight);
+	GlobalScreen.D2DDeviceContext->SetTransform(Transform);
+    
+    //Hack
+    D2D1_RECT_F Dest = *(D2D1_RECT_F*)&Destination;
+    D2D1_RECT_F Src  = *(D2D1_RECT_F*)&Source;
+    
+    GlobalScreen.D2DDeviceContext->DrawBitmap(Bitmap, Dest, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, Src);
+}
+
+
 #if 0
 int LoadTextures(texture_info* Requests, int Count, d2d_texture* Textures)
 {
-	int TexturesLoaded = 0;
+    int TexturesLoaded = 0;
     
-	IWICImagingFactory* WicFactory = 0;
-	HRESULT Result = CoCreateInstance(CLSID_WICImagingFactory, 0, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, (LPVOID*)&WicFactory);
+    IWICImagingFactory* WicFactory = 0;
+    HRESULT Result = CoCreateInstance(CLSID_WICImagingFactory, 0, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, (LPVOID*)&WicFactory);
     
-	if (WicFactory)
-	{
-		for (int i = 0; i < Count; i++)
-		{
-			texture_info Request = Requests[i];
-			d2d_texture* Texture = Textures + Request.Identifier;
+    if (WicFactory)
+    {
+        for (int i = 0; i < Count; i++)
+        {
+            texture_info Request = Requests[i];
+            d2d_texture* Texture = Textures + Request.Identifier;
             
-			Texture->Width = Request.Width;
-			Texture->Height = Request.Height;
+            Texture->Width = Request.Width;
+            Texture->Height = Request.Height;
             
-			wchar_t FilenameWide[MAX_PATH];
-			if (MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, Request.Filename, -1, FilenameWide, ArrayLength(FilenameWide)))
-			{
-				IWICBitmapDecoder* WicDecoder = 0;
-				WicFactory->CreateDecoderFromFilename(FilenameWide, 0, GENERIC_READ, WICDecodeMetadataCacheOnLoad, &WicDecoder);
+            wchar_t FilenameWide[MAX_PATH];
+            if (MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, Request.Filename, -1, FilenameWide, ArrayLength(FilenameWide)))
+            {
+                IWICBitmapDecoder* WicDecoder = 0;
+                WicFactory->CreateDecoderFromFilename(FilenameWide, 0, GENERIC_READ, WICDecodeMetadataCacheOnLoad, &WicDecoder);
                 
-				if (WicDecoder)
-				{
-					IWICBitmapFrameDecode* WicFrame = 0;
-					WicDecoder->GetFrame(0, &WicFrame);
+                if (WicDecoder)
+                {
+                    IWICBitmapFrameDecode* WicFrame = 0;
+                    WicDecoder->GetFrame(0, &WicFrame);
                     
-					if (WicFrame)
-					{
-						IWICFormatConverter* WicConverter = 0;
-						WicFactory->CreateFormatConverter(&WicConverter);
-						
-						if (WicConverter)
-						{
-							WicConverter->Initialize(WicFrame, GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, 0, 0.0, WICBitmapPaletteTypeCustom);
+                    if (WicFrame)
+                    {
+                        IWICFormatConverter* WicConverter = 0;
+                        WicFactory->CreateFormatConverter(&WicConverter);
+                        
+                        if (WicConverter)
+                        {
+                            WicConverter->Initialize(WicFrame, GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, 0, 0.0, WICBitmapPaletteTypeCustom);
                             
-							GlobalScreen.D2DDeviceContext->CreateBitmapFromWicBitmap(WicConverter, 0, &Texture->Bitmap);
-							WicConverter->Release();
-						}
-						WicFrame->Release();
-					}
-					WicDecoder->Release();
-				}
-			}
-			else
-			{
-				//Could not convert
-				OutputDebugStringA("Could not convert filename to wide characters\n");
-			}
-		}
-		WicFactory->Release();
-	}
-	
-	return TexturesLoaded;
+                            GlobalScreen.D2DDeviceContext->CreateBitmapFromWicBitmap(WicConverter, 0, &Texture->Bitmap);
+                            WicConverter->Release();
+                        }
+                        WicFrame->Release();
+                    }
+                    WicDecoder->Release();
+                }
+            }
+            else
+            {
+                //Could not convert
+                OutputDebugStringA("Could not convert filename to wide characters\n");
+            }
+        }
+        WicFactory->Release();
+    }
+    
+    return TexturesLoaded;
 }
 #endif
 
 void Win32DrawTexture(int Identifier, int Index, v2 Position, v2 Size, float Angle)
 {
-	//assert(Identifier < Identifier_Count);
+    //assert(Identifier < Identifier_Count);
     
-	d2d_texture Texture = GlobalTextures[Identifier];
+    d2d_texture Texture = GlobalTextures[Identifier];
     
-	int TexturesAcross = (int)(Texture.Bitmap->GetSize().width / Texture.Width);
-	if (TexturesAcross == 0)
-	{
-		TexturesAcross = 1;
-	}
+    int TexturesAcross = (int)(Texture.Bitmap->GetSize().width / Texture.Width);
+    if (TexturesAcross == 0)
+    {
+        TexturesAcross = 1;
+    }
     
-	float SrcX = (float)(Texture.Width * (Index % TexturesAcross));
-	float SrcY = (float)(Texture.Height * (Index / TexturesAcross));
-	float SrcWidth = (float)Texture.Width;
-	float SrcHeight = (float)Texture.Height;
-	
-	D2D1_RECT_F Src = { SrcX, SrcY, SrcX + SrcWidth, SrcY + SrcHeight };
-	D2D1_RECT_F Dest = { Position.X, Position.Y, Position.X + Size.X, Position.Y + Size.Y };
-	
-	if (Angle)
-	{
-		v2 Centre = Position + 0.5f * Size;
-		GlobalScreen.D2DDeviceContext->SetTransform(D2D1::Matrix3x2F::Rotation(RadiansToDegrees(Angle), D2D1::Point2F(Centre.X, Centre.Y)));
-		GlobalScreen.D2DDeviceContext->DrawBitmap(Texture.Bitmap, Dest, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, Src);
-		GlobalScreen.D2DDeviceContext->SetTransform(D2D1::Matrix3x2F::Identity());
-	}
-	else
-	{
-		GlobalScreen.D2DDeviceContext->DrawBitmap(Texture.Bitmap, Dest, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, Src);
-	}
+    float SrcX = (float)(Texture.Width * (Index % TexturesAcross));
+    float SrcY = (float)(Texture.Height * (Index / TexturesAcross));
+    float SrcWidth = (float)Texture.Width;
+    float SrcHeight = (float)Texture.Height;
+    
+    D2D1_RECT_F Src = { SrcX, SrcY, SrcX + SrcWidth, SrcY + SrcHeight };
+    D2D1_RECT_F Dest = { Position.X, Position.Y, Position.X + Size.X, Position.Y + Size.Y };
+    
+    if (Angle)
+    {
+        v2 Centre = Position + 0.5f * Size;
+        GlobalScreen.D2DDeviceContext->SetTransform(D2D1::Matrix3x2F::Rotation(RadiansToDegrees(Angle), D2D1::Point2F(Centre.X, Centre.Y)));
+        GlobalScreen.D2DDeviceContext->DrawBitmap(Texture.Bitmap, Dest, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, Src);
+        GlobalScreen.D2DDeviceContext->SetTransform(D2D1::Matrix3x2F::Identity());
+    }
+    else
+    {
+        GlobalScreen.D2DDeviceContext->DrawBitmap(Texture.Bitmap, Dest, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR, Src);
+    }
 }
 
 void Win32Rectangle(v2 Position, v2 Size, uint32_t FillColour, uint32_t BorderColour)
 {
-	D2D1_RECT_F RectDim = { Position.X, Position.Y, 
+    D2D1_RECT_F RectDim = { Position.X, Position.Y, 
         (Position.X + Size.X), (Position.Y + Size.Y) };
     
-	D2D1::Matrix3x2F Transform = D2D1::Matrix3x2F((f32)BufferWidth, 0, 0, -(f32)BufferWidth, 0, (f32)BufferHeight);
-	GlobalScreen.D2DDeviceContext->SetTransform(Transform);
+    D2D1::Matrix3x2F Transform = D2D1::Matrix3x2F((f32)BufferWidth, 0, 0, -(f32)BufferWidth, 0, (f32)BufferHeight);
+    GlobalScreen.D2DDeviceContext->SetTransform(Transform);
     
-	//TODO get rid of this
-	static ID2D1SolidColorBrush* Brush;
-	if (!Brush)
-	{
-		GlobalScreen.D2DDeviceContext->CreateSolidColorBrush(D2D1::ColorF(0), &Brush);
-	}
-	
-	Brush->SetColor(D2D1::ColorF(FillColour & 0xFFFFFF, (float)((FillColour >> 24) / 255.0f)));
-	GlobalScreen.D2DDeviceContext->FillRectangle(RectDim, Brush);
+    //TODO get rid of this
+    static ID2D1SolidColorBrush* Brush;
+    if (!Brush)
+    {
+        GlobalScreen.D2DDeviceContext->CreateSolidColorBrush(D2D1::ColorF(0), &Brush);
+    }
     
-	if (BorderColour)
-	{
-		Brush->SetColor(D2D1::ColorF(BorderColour & 0xFFFFFF, (float)((BorderColour >> 24) / 255.0f)));
-		GlobalScreen.D2DDeviceContext->DrawRectangle(RectDim, Brush, 0.005f);
-	}
+    Brush->SetColor(D2D1::ColorF(FillColour & 0xFFFFFF, (float)((FillColour >> 24) / 255.0f)));
+    GlobalScreen.D2DDeviceContext->FillRectangle(RectDim, Brush);
+    
+    if (BorderColour)
+    {
+        Brush->SetColor(D2D1::ColorF(BorderColour & 0xFFFFFF, (float)((BorderColour >> 24) / 255.0f)));
+        GlobalScreen.D2DDeviceContext->DrawRectangle(RectDim, Brush, 0.005f);
+    }
 }
 
 void Win32Line(v2 Start_, v2 End_, u32 Colour, f32 Thickness)
 {
-	D2D1_POINT_2F Start = { Start_.X, Start_.Y };
-	D2D1_POINT_2F End = { End_.X, End_.Y };
-	
-	static ID2D1SolidColorBrush* Brush;
-	if (!Brush)
-	{
-		GlobalScreen.D2DDeviceContext->CreateSolidColorBrush(D2D1::ColorF(0), &Brush);
-	}
+    D2D1_POINT_2F Start = { Start_.X, Start_.Y };
+    D2D1_POINT_2F End = { End_.X, End_.Y };
     
-	Brush->SetColor(D2D1::ColorF(Colour & 0xFFFFFF, (float)((Colour >> 24) / 255.0f)));
+    static ID2D1SolidColorBrush* Brush;
+    if (!Brush)
+    {
+        GlobalScreen.D2DDeviceContext->CreateSolidColorBrush(D2D1::ColorF(0), &Brush);
+    }
     
-	D2D1::Matrix3x2F Transform = D2D1::Matrix3x2F((f32)BufferWidth, 0, 0, -(f32)BufferWidth, 0, (f32)BufferHeight);
-	GlobalScreen.D2DDeviceContext->SetTransform(Transform);
+    Brush->SetColor(D2D1::ColorF(Colour & 0xFFFFFF, (float)((Colour >> 24) / 255.0f)));
+    
+    D2D1::Matrix3x2F Transform = D2D1::Matrix3x2F((f32)BufferWidth, 0, 0, -(f32)BufferWidth, 0, (f32)BufferHeight);
+    GlobalScreen.D2DDeviceContext->SetTransform(Transform);
     GlobalScreen.D2DDeviceContext->DrawLine(Start, End, Brush, Thickness, 0);
 }
 
 void Win32DrawText(string String, v2 Position, v2 Size, u32 Color, bool Centered)
 {
-	Position.Y = ScreenTop - Position.Y - Size.Y;
+    Position.Y = ScreenTop - Position.Y - Size.Y;
     
-	D2D1::Matrix3x2F Transform = D2D1::Matrix3x2F((f32)BufferWidth, 0, 0, (f32)BufferWidth, 0, 0);
-	GlobalScreen.D2DDeviceContext->SetTransform(Transform);
+    D2D1::Matrix3x2F Transform = D2D1::Matrix3x2F((f32)BufferWidth, 0, 0, (f32)BufferWidth, 0, 0);
+    GlobalScreen.D2DDeviceContext->SetTransform(Transform);
     
-	Assert(String.Length < 1000);
-	wchar_t Text[1000];
-	int TextLength = MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, String.Text, String.Length, Text, ArrayCount(Text));
+    Assert(String.Length < 1000);
+    wchar_t Text[1000];
+    int TextLength = MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, String.Text, String.Length, Text, ArrayCount(Text));
     
-	D2D1_RECT_F Rect = D2D1::RectF(Position.X, Position.Y, Position.X + Size.X, Position.Y + Size.Y);
+    D2D1_RECT_F Rect = D2D1::RectF(Position.X, Position.Y, Position.X + Size.X, Position.Y + Size.Y);
     
-	static ID2D1SolidColorBrush* Brush;
-	if (!Brush)
-	{
-		GlobalScreen.D2DDeviceContext->CreateSolidColorBrush(D2D1::ColorF(0), &Brush);
-	}
+    static ID2D1SolidColorBrush* Brush;
+    if (!Brush)
+    {
+        GlobalScreen.D2DDeviceContext->CreateSolidColorBrush(D2D1::ColorF(0), &Brush);
+    }
     
-	Brush->SetColor(D2D1::ColorF(Color & 0xFFFFFF, (float)((Color >> 24) / 255.0f)));
+    Brush->SetColor(D2D1::ColorF(Color & 0xFFFFFF, (float)((Color >> 24) / 255.0f)));
     
-	GlobalScreen.TextFormat->SetTextAlignment(Centered ? DWRITE_TEXT_ALIGNMENT_CENTER : DWRITE_TEXT_ALIGNMENT_LEADING);
-	GlobalScreen.D2DDeviceContext->DrawText(Text, TextLength, GlobalScreen.TextFormat, Rect, Brush);
+    GlobalScreen.TextFormat->SetTextAlignment(Centered ? DWRITE_TEXT_ALIGNMENT_CENTER : DWRITE_TEXT_ALIGNMENT_LEADING);
+    GlobalScreen.D2DDeviceContext->DrawText(Text, TextLength, GlobalScreen.TextFormat, Rect, Brush);
 }
 
 void Win32DebugOut(string String)
 {
-	OutputDebugStringA(String.Text);
+    OutputDebugStringA(String.Text);
 }
 
 void Win32Sleep(int Milliseconds)
 {
-	Sleep(Milliseconds);
+    Sleep(Milliseconds);
 }
 
 static memory_arena
 Win32CreateMemoryArena(u64 Size, memory_arena_type Type)
 {
-	memory_arena Arena = {};
+    memory_arena Arena = {};
     
-	Arena.Buffer = (u8*)VirtualAlloc(0, Size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-	Arena.Size = Size;
-	Arena.Type = Type;
+    Arena.Buffer = (u8*)VirtualAlloc(0, Size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    Arena.Size = Size;
+    Arena.Type = Type;
     
-	return Arena;
+    return Arena;
 }
 
 static void
 Win32DeleteMemoryArena(memory_arena* Arena)
 {
-	VirtualFree(Arena->Buffer, 0, MEM_RELEASE);
-	*Arena = {};
+    VirtualFree(Arena->Buffer, 0, MEM_RELEASE);
+    *Arena = {};
 }
 
 static span<u8> 
 Win32LoadFile(memory_arena* Arena, char* Path)
 {
-	span<u8> Result = {};
-	bool Success = false;
+    span<u8> Result = {};
+    bool Success = false;
     
-	HANDLE File = CreateFileA(Path, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0);
+    HANDLE File = CreateFileA(Path, GENERIC_READ, 0, 0, OPEN_EXISTING, 0, 0);
     
-	if (File != INVALID_HANDLE_VALUE)
-	{
-		u64 FileSize;
-		if (GetFileSizeEx(File, (LARGE_INTEGER*)&FileSize))
-		{
-			Result.Memory = Alloc(Arena, FileSize);
-			DWORD Length;
-			if (ReadFile(File, Result.Memory, (u32)FileSize, &Length, 0))
-			{
-				Success = true;
-				Result.Count = Length;
-			}
-		}
-		CloseHandle(File);
-	}
+    if (File != INVALID_HANDLE_VALUE)
+    {
+        u64 FileSize;
+        if (GetFileSizeEx(File, (LARGE_INTEGER*)&FileSize))
+        {
+            Result.Memory = Alloc(Arena, FileSize);
+            DWORD Length;
+            if (ReadFile(File, Result.Memory, (u32)FileSize, &Length, 0))
+            {
+                Success = true;
+                Result.Count = Length;
+            }
+        }
+        CloseHandle(File);
+    }
     
 #if DEBUG
-	if (Success)
-	{
-        LOG("Opened file: %s", Path);
-	}
-	else
-	{
-        LOG("Could not open file: %s", Path); 
-	}
+    if (Success)
+        LOG("Opened file: %s\n", Path);
+    else
+        LOG("Could not open file: %s\n", Path); 
 #endif
     
-	return Result;
+    return Result;
 }
 
 static void
 Win32SaveFile(char* Path, span<u8> Data)
 {
-	HANDLE File = CreateFileA(Path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+    HANDLE File = CreateFileA(Path, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
     
-	bool Success = false;
+    bool Success = false;
     
-	if (File != INVALID_HANDLE_VALUE)
-	{
-		DWORD BytesWritten;
-		if (WriteFile(File, Data.Memory, Data.Count, &BytesWritten, 0))
-		{
-			Success = true;
-		}
-		CloseHandle(File);
-	}
+    if (File != INVALID_HANDLE_VALUE)
+    {
+        DWORD BytesWritten;
+        if (WriteFile(File, Data.Memory, Data.Count, &BytesWritten, 0))
+        {
+            Success = true;
+        }
+        CloseHandle(File);
+    }
     
 #if DEBUG
-	if (Success)
-	{
-        LOG("Saved file: %s", Path);
-	}
-	else
-	{
-        LOG("Could not save file: %s", Path); 
-	}
+    if (Success)
+        LOG("Saved file: %s\n", Path);
+    else
+        LOG("Could not save file: %s\n", Path); 
 #endif
 }
