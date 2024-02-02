@@ -49,6 +49,9 @@ void Win32SaveFile(char* Path, span<u8> Data);
 #define PlatformLoadFile    Win32LoadFile
 #define PlatformSaveFile    Win32SaveFile
 
+//TODO: Make into a platform function or combine with PlatformDrawText()
+f32 DrawString(v2 Position, string String, f32 Size);
+
 //TODO: Fix
 static inline void 
 Win32Rectangle(rect Rect, u32 FillColor, u32 BorderColor = 0)
@@ -313,7 +316,6 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
         GameUpdateAndRender(GameState, SecondsPerFrame, &Input, Allocator);
         ResetArena(&TransientArena);
         
-        DrawString(V2(0, 0), String("Test"));
         /*
         rect BitmapDest = {{0.0f, 0.0f}, {1.0f, 0.5625f}};
         rect BitmapSrc  = {{0.0f, 0.0f}, {700.0f, 350.0f}};
@@ -561,8 +563,8 @@ DrawBitmap(rect Destination, rect Source, ID2D1Bitmap1* Bitmap)
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "stb_truetype.h"
 
-stbtt_bakedchar cdata[128];
-ID2D1Bitmap1* Font;
+stbtt_bakedchar FontBakedChars[128];
+ID2D1Bitmap1* FontBitmap;
 
 static ID2D1Bitmap1*
 Win32LoadFont(char* Path, memory_arena* Arena)
@@ -577,11 +579,11 @@ Win32LoadFont(char* Path, memory_arena* Arena)
     
     u8* STBPixels = Alloc(Arena, 512 * 512);
     
-    stbtt_BakeFontBitmap(Data.Memory, 0, FontHeight, STBPixels, Width, Height, 0, 128, cdata);
+    stbtt_BakeFontBitmap(Data.Memory, 0, FontHeight, STBPixels, Width, Height, 0, 128, FontBakedChars);
     
     u32* D2DPixels = (u32*)Alloc(Arena, 512 * 512 * 4);
     
-    u8* Src = STBPixels +Width * (Height - 1);
+    u8* Src = STBPixels + Width * (Height - 1);
     u32* Dest = D2DPixels;
     for (int Y = 0; Y < Height; Y++)
     {
@@ -595,38 +597,40 @@ Win32LoadFont(char* Path, memory_arena* Arena)
     }
     
     ID2D1Bitmap1* D2DBitmap = CreateBitmapFromData(D2DPixels, Width, Height);
-    Font = D2DBitmap;
+    FontBitmap = D2DBitmap;
     return D2DBitmap;
 }
 
-static void
-DrawString(v2 Position, string String)
+static f32
+DrawString(v2 Position, string String, f32 Size)
 {
-    f32 X = Position.X;
-    f32 Scale = 0.00333f;
+    f32 Scale = Size / 60.0f;
+    
+    f32 StartX = Position.X;
+    Position.Y += 0.25f * Size;
     
     for (u32 I = 0; I < String.Length; I++)
     {
         char C = String.Text[I];
         if (C < 128)
         {
-            stbtt_bakedchar BakedChar = cdata[C];
-            rect Source = {{(f32)BakedChar.x0, (f32)(512 - BakedChar.y1)}, {(f32)BakedChar.x1, (f32)(512 - BakedChar.y0)}};
+            stbtt_bakedchar BakedChar = FontBakedChars[C];
+            rect Source = {{(f32)BakedChar.x0, (f32)(512 - BakedChar.y0)}, {(f32)BakedChar.x1, (f32)(512 - BakedChar.y1)}};
             
-            v2 Size = Source.MaxCorner - Source.MinCorner;
-            v2 Offset = V2(0,0);//{(f32)BakedChar.xoff, (f32)BakedChar.yoff};
+            v2 CharSizePixels = Source.MaxCorner - Source.MinCorner;
+            v2 OffsetPixels = {(f32)BakedChar.xoff, (f32)-BakedChar.yoff};
             
-            v2 DrawPosition = V2(X, Position.Y);
-            
-            v2 MinCorner = DrawPosition + Scale * Offset;
-            v2 MaxCorner = MinCorner + Scale * Size;
+            v2 MinCorner = Position + Scale * OffsetPixels;
+            v2 MaxCorner = MinCorner + Scale * CharSizePixels;
             rect Dest = {MinCorner, MaxCorner};
             
-            DrawBitmap(Dest, Source, Font);
+            DrawBitmap(Dest, Source, FontBitmap);
             
-            X += Scale * BakedChar.xadvance;
+            Position.X += Scale * BakedChar.xadvance;
         }
     }
+    f32 Width = Position.X - StartX;
+    return Width;
 }
 
 #if 0

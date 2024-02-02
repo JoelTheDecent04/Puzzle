@@ -83,14 +83,23 @@ DrawConsole(console* Console)
     f32 X0 = 0.1f;
     f32 X1 = 0.9f;
     
-    f32 InputHeight = 0.02f;
+    f32 InputTextHeight = 0.02f;
     
     f32 Y0 = ScreenTop - Console->Height;
     f32 Width = X1 - X0;
     
-    PlatformRectangle(V2(X0, Y0 + InputHeight), V2(Width, Console->Height), 0xC0FFFFFF);
-    PlatformRectangle(V2(X0, Y0), V2(Width, InputHeight), 0xFFFFFFFF);
+    PlatformRectangle(V2(X0, Y0 + InputTextHeight), V2(Width, Console->Height), 0xC0FFFFFF);
+    PlatformRectangle(V2(X0, Y0), V2(Width, InputTextHeight), 0xFF000000);
     
     string Input = {Console->InputBuffer, Console->InputBufferLength};
-    PlatformDrawText(Input, V2(X0, Y0), V2(Width, InputHeight));
+    f32 TextWidth = DrawString(V2(X0, Y0), Input, InputTextHeight);
+    
+    //Draw cursor
+    if (Console->CursorOn)
+    {
+        f32 CursorPad = 0.002f;
+        PlatformRectangle(V2(X0 + TextWidth, Y0 + CursorPad), 
+                          V2(CursorPad, InputTextHeight - 2.0f * CursorPad),
+                          0xFFFFFFFF);
+    }
 }
