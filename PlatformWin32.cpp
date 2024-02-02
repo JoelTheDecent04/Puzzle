@@ -88,6 +88,9 @@ void ToggleFullscreen(HWND Window);
 //int LoadTextures(texture_info* Requests, int Count, d2d_texture* Textures);
 ID2D1Bitmap1* Win32LoadBitmap(char* Path, memory_arena* Arena);
 void DrawBitmap(rect Destination, rect Source, ID2D1Bitmap1* Bitmap);
+ID2D1Bitmap1* Win32LoadFont(char* Path, memory_arena* Arena);
+
+void DrawString(v2 Position, string String);
 
 struct input_state
 {
@@ -260,7 +263,7 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
     
 	game_input PreviousInput = {};
     
-    ID2D1Bitmap1* Bitmap = Win32LoadBitmap("assets/testasset.bmp", &TransientArena);
+    ID2D1Bitmap1* Bitmap = Win32LoadFont("assets/TitilliumWeb-Regular.ttf", &TransientArena);
     
     while (true)
 	{
@@ -310,10 +313,12 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
         GameUpdateAndRender(GameState, SecondsPerFrame, &Input, Allocator);
         ResetArena(&TransientArena);
         
+        DrawString(V2(0, 0), String("Test"));
+        /*
         rect BitmapDest = {{0.0f, 0.0f}, {1.0f, 0.5625f}};
         rect BitmapSrc  = {{0.0f, 0.0f}, {700.0f, 350.0f}};
         DrawBitmap(BitmapDest, BitmapSrc, Bitmap);
-        
+        */
         GlobalScreen.D2DDeviceContext->EndDraw();
         GlobalScreen.SwapChain->Present(0, 0);
         
@@ -499,6 +504,21 @@ void ToggleFullscreen(HWND Window)
 }
 
 static ID2D1Bitmap1*
+CreateBitmapFromData(u32* Pixels, i32 Width, i32 Height)
+{
+    ID2D1Bitmap1* Bitmap;
+    
+    D2D1_BITMAP_PROPERTIES1 BitmapProperties = {};
+    BitmapProperties.pixelFormat.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    BitmapProperties.pixelFormat.alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
+    
+    HRESULT Result = GlobalScreen.D2DDeviceContext->CreateBitmap(D2D1::SizeU(Width, Height),
+                                                                 Pixels, Width * 4, BitmapProperties,
+                                                                 &Bitmap);
+    return Bitmap;
+}
+
+static ID2D1Bitmap1*
 Win32LoadBitmap(char* Path, memory_arena* Arena)
 {
     Assert(Arena->Type == TRANSIENT);
@@ -515,14 +535,7 @@ Win32LoadBitmap(char* Path, memory_arena* Arena)
         i32 Width = InfoHeader->biWidth;
         i32 Height = InfoHeader->biHeight;
         
-        D2D1_BITMAP_PROPERTIES1 BitmapProperties = {};
-        BitmapProperties.pixelFormat.format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        BitmapProperties.pixelFormat.alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
-        
-        HRESULT Result = GlobalScreen.D2DDeviceContext->CreateBitmap(D2D1::SizeU(Width, Height),
-                                                                     Pixels, Width * 4, BitmapProperties,
-                                                                     &Bitmap);
-        int x = 3;
+        Bitmap = CreateBitmapFromData((u32*)Pixels, Width, Height);
     }
     if (!Bitmap)
     {
@@ -538,13 +551,83 @@ DrawBitmap(rect Destination, rect Source, ID2D1Bitmap1* Bitmap)
     D2D1::Matrix3x2F Transform = D2D1::Matrix3x2F((f32)BufferWidth, 0, 0, -(f32)BufferWidth, 0, (f32)BufferHeight);
 	GlobalScreen.D2DDeviceContext->SetTransform(Transform);
     
-    //Hack
+    //TODO: Is it bad to have this?
     D2D1_RECT_F Dest = *(D2D1_RECT_F*)&Destination;
     D2D1_RECT_F Src  = *(D2D1_RECT_F*)&Source;
     
     GlobalScreen.D2DDeviceContext->DrawBitmap(Bitmap, Dest, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, Src);
 }
 
+#define STB_TRUETYPE_IMPLEMENTATION
+#include "stb_truetype.h"
+
+stbtt_bakedchar cdata[128];
+ID2D1Bitmap1* Font;
+
+static ID2D1Bitmap1*
+Win32LoadFont(char* Path, memory_arena* Arena)
+{
+    Assert(Arena->Type == TRANSIENT);
+    
+    span<u8> Data = Win32LoadFile(Arena, Path);
+    
+    f32 FontHeight = 60.0f;
+    i32 Width = 512;
+    i32 Height = 512;
+    
+    u8* STBPixels = Alloc(Arena, 512 * 512);
+    
+    stbtt_BakeFontBitmap(Data.Memory, 0, FontHeight, STBPixels, Width, Height, 0, 128, cdata);
+    
+    u32* D2DPixels = (u32*)Alloc(Arena, 512 * 512 * 4);
+    
+    u8* Src = STBPixels +Width * (Height - 1);
+    u32* Dest = D2DPixels;
+    for (int Y = 0; Y < Height; Y++)
+    {
+        for (int X = 0; X < Width; X++)
+        {
+            u32 Val = Src[X];
+            Dest[X] = (Val << 24 | Val << 16 | Val << 8 | Val);
+        }
+        Dest += Width;
+        Src -= Width;
+    }
+    
+    ID2D1Bitmap1* D2DBitmap = CreateBitmapFromData(D2DPixels, Width, Height);
+    Font = D2DBitmap;
+    return D2DBitmap;
+}
+
+static void
+DrawString(v2 Position, string String)
+{
+    f32 X = Position.X;
+    f32 Scale = 0.00333f;
+    
+    for (u32 I = 0; I < String.Length; I++)
+    {
+        char C = String.Text[I];
+        if (C < 128)
+        {
+            stbtt_bakedchar BakedChar = cdata[C];
+            rect Source = {{(f32)BakedChar.x0, (f32)(512 - BakedChar.y1)}, {(f32)BakedChar.x1, (f32)(512 - BakedChar.y0)}};
+            
+            v2 Size = Source.MaxCorner - Source.MinCorner;
+            v2 Offset = V2(0,0);//{(f32)BakedChar.xoff, (f32)BakedChar.yoff};
+            
+            v2 DrawPosition = V2(X, Position.Y);
+            
+            v2 MinCorner = DrawPosition + Scale * Offset;
+            v2 MaxCorner = MinCorner + Scale * Size;
+            rect Dest = {MinCorner, MaxCorner};
+            
+            DrawBitmap(Dest, Source, Font);
+            
+            X += Scale * BakedChar.xadvance;
+        }
+    }
+}
 
 #if 0
 int LoadTextures(texture_info* Requests, int Count, d2d_texture* Textures)
