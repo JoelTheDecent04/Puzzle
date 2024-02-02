@@ -62,41 +62,42 @@ UpdateConsole(console* Console, game_input* Input, f32 DeltaTime)
         Input->ButtonUp = 0;
         Input->Movement = {};
         
-        for (char* TextInput = Input->TextInput;
-             *TextInput;
-             TextInput++)
+        for (char* TextInput = Input->TextInput; *TextInput; TextInput++)
         {
             char C = *TextInput;
-            if (C == '\n')
+            switch (C)
             {
-                string Command = {Console->Input, (u32)Console->InputLength};
-                RunCommand(Console, Command);
-                
-                Console->InputLength = 0;
-                Console->InputCursor = 0;
-            }
-            else if (C == '\b')
-            {
-                if (Console->InputCursor > 0)
+                case '\n':
                 {
-                    memmove(Console->Input + Console->InputCursor - 1, 
-                            Console->Input + Console->InputCursor,
-                            Console->InputLength - Console->InputCursor);
-                    Console->InputLength--;
-                    Console->InputCursor--;
-                }
-            }
-            else
-            {
-                if (Console->InputLength + 1 < ArrayCount(Console->Input))
-                {
-                    memmove(Console->Input + Console->InputCursor + 1, 
-                            Console->Input + Console->InputCursor,
-                            Console->InputLength - Console->InputCursor);
+                    string Command = {Console->Input, (u32)Console->InputLength};
+                    RunCommand(Console, Command);
                     
-                    Console->Input[Console->InputCursor++] = C;
-                    Console->InputLength++;
-                }
+                    Console->InputLength = 0;
+                    Console->InputCursor = 0;
+                } break;
+                case '\b':
+                {
+                    if (Console->InputCursor > 0)
+                    {
+                        memmove(Console->Input + Console->InputCursor - 1, 
+                                Console->Input + Console->InputCursor,
+                                Console->InputLength - Console->InputCursor);
+                        Console->InputLength--;
+                        Console->InputCursor--;
+                    }
+                } break;
+                default:
+                {
+                    if (Console->InputLength + 1 < ArrayCount(Console->Input))
+                    {
+                        memmove(Console->Input + Console->InputCursor + 1, 
+                                Console->Input + Console->InputCursor,
+                                Console->InputLength - Console->InputCursor);
+                        
+                        Console->Input[Console->InputCursor++] = C;
+                        Console->InputLength++;
+                    }
+                } break;
             }
         }
     }

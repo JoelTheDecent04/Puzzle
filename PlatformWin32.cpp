@@ -318,11 +318,6 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
         GameUpdateAndRender(GameState, SecondsPerFrame, &Input, Allocator);
         ResetArena(&TransientArena);
         
-        /*
-        rect BitmapDest = {{0.0f, 0.0f}, {1.0f, 0.5625f}};
-        rect BitmapSrc  = {{0.0f, 0.0f}, {700.0f, 350.0f}};
-        DrawBitmap(BitmapDest, BitmapSrc, Bitmap);
-        */
         GlobalScreen.D2DDeviceContext->EndDraw();
         GlobalScreen.SwapChain->Present(0, 0);
         
@@ -493,23 +488,19 @@ void ToggleFullscreen(HWND Window)
 		GetMonitorInfo(MonitorFromWindow(Window, MONITOR_DEFAULTTOPRIMARY), &MonitorInfo);
 		SetWindowLong(Window, GWL_STYLE, Style & ~WS_OVERLAPPEDWINDOW);
 		
-		SetWindowPos(
-                     Window, HWND_TOP,
+		SetWindowPos(Window, HWND_TOP,
                      MonitorInfo.rcMonitor.left, MonitorInfo.rcMonitor.top,
                      MonitorInfo.rcMonitor.right - MonitorInfo.rcMonitor.left,
                      MonitorInfo.rcMonitor.bottom - MonitorInfo.rcMonitor.top,
-                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED
-                     );
+                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
 	}
 	else
 	{
 		SetWindowLong(Window, GWL_STYLE, Style | WS_OVERLAPPEDWINDOW);
 		SetWindowPlacement(Window, &PreviousWindowPlacement);
-		SetWindowPos(
-                     Window, NULL, 0, 0, 0, 0,
+		SetWindowPos(Window, NULL, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
-                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED
-                     );
+                     SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
 	}
 }
 
