@@ -32,6 +32,7 @@ OutputDebugStringA(ArenaPrint(&GlobalDebugArena, __VA_ARGS__).Text)
 //Platform functions
 void Win32DrawTexture(int Identifier, int Index, v2 Position, v2 Size, float Angle);
 void Win32Rectangle(v2 Position, v2 Dimensions, u32 FillColour, u32 BorderColour = 0);
+void Win32Circle(v2 Position, f32 Radius, u32 Color);
 void Win32Line(v2 Start_, v2 End_, u32 Colour, f32 Thickness);
 void Win32DrawText(string String, v2 Position, v2 Size, u32 Color = 0xFF808080, bool Centered = false);
 void Win32DebugOut(string String);
@@ -42,6 +43,7 @@ void Win32SaveFile(char* Path, span<u8> Data);
 
 #define PlatformDrawTexture Win32DrawTexture
 #define PlatformRectangle   Win32Rectangle
+#define PlatformCircle      Win32Circle
 #define PlatformLine        Win32Line
 #define PlatformDrawText    Win32DrawText
 #define PlatformDebugOut    Win32DebugOut
@@ -589,6 +591,7 @@ Win32LoadFont(char* Path, memory_arena* Arena)
     
     u32* D2DPixels = (u32*)Alloc(Arena, 512 * 512 * 4);
     
+    //Flip texture and convert to RGBA
     u8* Src = STBPixels + Width * (Height - 1);
     u32* Dest = D2DPixels;
     for (int Y = 0; Y < Height; Y++)
@@ -754,6 +757,24 @@ void Win32Rectangle(v2 Position, v2 Size, uint32_t FillColour, uint32_t BorderCo
         Brush->SetColor(D2D1::ColorF(BorderColour & 0xFFFFFF, (float)((BorderColour >> 24) / 255.0f)));
         GlobalScreen.D2DDeviceContext->DrawRectangle(RectDim, Brush, 0.005f);
     }
+}
+
+void Win32Circle(v2 Position, f32 Radius, u32 Color)
+{
+    D2D1::Matrix3x2F Transform = D2D1::Matrix3x2F((f32)BufferWidth, 0, 0, -(f32)BufferWidth, 0, (f32)BufferHeight);
+    GlobalScreen.D2DDeviceContext->SetTransform(Transform);
+    
+    //TODO get rid of this
+    static ID2D1SolidColorBrush* Brush;
+    if (!Brush)
+    {
+        GlobalScreen.D2DDeviceContext->CreateSolidColorBrush(D2D1::ColorF(0), &Brush);
+    }
+    
+    Brush->SetColor(D2D1::ColorF(Color & 0xFFFFFF, (float)((Color >> 24) / 255.0f)));
+    
+    D2D1_ELLIPSE Ellipse = {{Position.X, Position.Y}, Radius, Radius};
+    GlobalScreen.D2DDeviceContext->FillEllipse(Ellipse, Brush);
 }
 
 void Win32Line(v2 Start_, v2 End_, u32 Colour, f32 Thickness)
