@@ -8,7 +8,8 @@ enum map_elem_type
     MapElem_Box,
     MapElem_Goal,
     MapElem_Window,
-    MapElem_Line
+    MapElem_Line,
+    MapElem_Circle
 };
 
 f32 const ScreenTop = 0.5625f;
@@ -48,8 +49,16 @@ struct map_element
     v2 AttachmentOffset;
 };
 
+enum rigid_body_type
+{
+    RigidBody_Rectangle,
+    RigidBody_Circle
+};
+
 struct rigid_body
 {
+    rigid_body_type Type;
+    
     v2 P;
     v2 dP;
     v2 Size;
@@ -70,7 +79,7 @@ struct entity
     v2 MapElementAttachmentOffset;
 };*/
 
-struct box
+struct entity
 {
     u32 RigidBodyIndex;
     u32 Color;
@@ -95,7 +104,7 @@ struct map_desc
     span<rigid_body> RigidBodies;
     span<attachment> Attachments;
     
-    span<box> Boxes;
+    span<entity> Entities;
     player Player;
 };
 

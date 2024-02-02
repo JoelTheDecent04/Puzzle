@@ -320,12 +320,20 @@ RunEditor(game_state* GameState, game_input* Input, allocator Allocator)
         Add(&Map->Elements, &Window, PArena);
     }
     
-    
     if (Layout.Button("Line"))
     {
         map_element Line = { MapElem_Line };
         Line.Shape.Position = ScreenCenter;
         Line.Shape.Size = TileSize;
+        Line.Color = 0xFFFFFFFF;
+        Add(&Map->Elements, &Line, PArena);
+    }
+    
+    if (Layout.Button("Circle"))
+    {
+        map_element Line = { MapElem_Circle };
+        Line.Shape.Position = ScreenCenter;
+        Line.Shape.Size = BoxSize;
         Line.Color = 0xFFFFFFFF;
         Add(&Map->Elements, &Line, PArena);
     }
@@ -509,7 +517,7 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
     
     u32 ComponentMaxCount = Map->Elements.Count + 1; //One for the player
     span<rigid_body> RigidBodies = AllocSpan(MapArena, rigid_body, ComponentMaxCount);
-    span<box> Boxes = AllocSpan(MapArena, box, ComponentMaxCount);
+    span<entity> Entities = AllocSpan(MapArena, entity, ComponentMaxCount);
     span<attachment> Attachments = AllocSpan(MapArena, attachment, ComponentMaxCount);
     
     u32 RigidBodyCount = 0;
@@ -537,14 +545,15 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
             {
                 u32 RigidBodyIndex = RigidBodyCount++;
                 rigid_body* RigidBody = RigidBodies + RigidBodyIndex;
+                RigidBody->Type = RigidBody_Rectangle;
                 RigidBody->P = MapElement->Shape.Position;
                 RigidBody->Size  = MapElement->Shape.Size;
                 RigidBody->InvMass = 1.0f;
                 
-                u32 BoxIndex = BoxCount++;
-                box* Box = Boxes + BoxIndex;
-                Box->RigidBodyIndex = RigidBodyIndex;
-                Box->Color = 0xFFFFFFFF;
+                u32 EntityIndex = EntityCount++;
+                entity* Entity = Entities + EntityIndex;
+                Entity->RigidBodyIndex = RigidBodyIndex;
+                Entity->Color = 0xFFFFFFFF;
                 
                 if (MapElement->AttachedTo)
                 {
@@ -558,6 +567,20 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
                     Attachments[AttachmentCount++] = Attachment;
                 }
                 
+            } break;
+            case MapElem_Circle:
+            {
+                u32 RigidBodyIndex = RigidBodyCount++;
+                rigid_body* RigidBody = RigidBodies + RigidBodyIndex;
+                RigidBody->Type = RigidBody_Circle;
+                RigidBody->P = MapElement->Shape.Position;
+                RigidBody->Size  = MapElement->Shape.Size;
+                RigidBody->InvMass = 1.0f;
+                
+                u32 EntityIndex = EntityCount++;
+                entity* Entity = Entities + EntityIndex;
+                Entity->RigidBodyIndex = RigidBodyIndex;
+                Entity->Color = 0xFFFFFFFF;
             } break;
             case MapElem_Rectangle:
             {
@@ -581,13 +604,13 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
     RigidBodies.Count = RigidBodyCount;
     
     Assert(BoxCount <= ComponentMaxCount);
-    Boxes.Count = BoxCount;
+    Entities.Count = EntityCount;
     
     Assert(AttachmentCount <= ComponentMaxCount);
     Attachments.Count = AttachmentCount;
     
     Map->RigidBodies = RigidBodies;
-    Map->Boxes = Boxes;
+    Map->Entities = Entities;
     Map->Attachments = Attachments;
 }
 

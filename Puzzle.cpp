@@ -111,10 +111,6 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, game_state* GameState, map
                         }
                     }*/
                 } break;
-                case MapElem_Laser: case MapElem_Box: case MapElem_Goal: case MapElem_Window:
-                {
-                } break;
-                default: Assert(MapElement.Type == MapElem_Null);
             }
         }
         
@@ -364,6 +360,13 @@ DrawGame(game_state* GameState, memory_arena* Arena)
                     PlatformRectangle(MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, MapElement.Color);
                 }
             } break;
+            case MapElem_Circle:
+            {
+                if (GameState->Editing)
+                {
+                    PlatformCircle(MapElement.Shape.Position, 0.5f * MapElement.Shape.Size.X, MapElement.Color);
+                }
+            }
             case MapElem_Window:
             break; //Drawn later in transparent section
             default: Assert(MapElement.Type == MapElem_Null);
@@ -382,10 +385,20 @@ DrawGame(game_state* GameState, memory_arena* Arena)
         }
         
         //Boxes
-        for (box& Box : GameState->Map->Boxes)
+        for (entity& Entity : GameState->Map->Entities)
         {
-            rigid_body* RigidBody = GameState->Map->RigidBodies + Box.RigidBodyIndex;
-            PlatformRectangle(RigidBody->P - 0.5f * RigidBody->Size, RigidBody->Size, 0xFFFFFFFF);
+            rigid_body* RigidBody = GameState->Map->RigidBodies + Entity.RigidBodyIndex;
+            switch (RigidBody->Type)
+            {
+                case RigidBody_Rectangle:
+                {
+                    PlatformRectangle(RigidBody->P - 0.5f * RigidBody->Size, RigidBody->Size, 0xFFFFFFFF);
+                } break;
+                case RigidBody_Circle:
+                {
+                    PlatformCircle(RigidBody->P, 0.5f * RigidBody->Size.X, 0xFFFFFFFF);
+                } break;
+            }
         }
     }
     
