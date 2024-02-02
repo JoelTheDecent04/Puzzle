@@ -128,8 +128,9 @@ struct console
     f32 Height;
     f32 TargetHeight;
     
-    char InputBuffer[256];
-    u32  InputBufferLength;
+    char Input[256];
+    int InputLength;
+    int InputCursor;
     
     bool CursorOn;
     f32  CursorCountdown;
@@ -157,6 +158,8 @@ enum
     Button_LMouse   = (1 << 4),
     Button_LShift   = (1 << 5),
     Button_Console  = (1 << 6),
+    Button_Left     = (1 << 7),
+    Button_Right    = (1 << 8),
 };
 
 struct game_input

@@ -356,6 +356,8 @@ LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lPa
             Assert(wParam < 128);
             char Char = (char)wParam;
             
+            LOG("Char: %u\n", Char);
+            
             if (Char == '\r')
                 Char = '\n';
             
@@ -394,6 +396,10 @@ KeyboardAndMouseInputState(input_state* InputState, HWND Window)
         InputState->Buttons |= Button_LShift;
     if (GetAsyncKeyState(VK_F1) & 0x8000)
         InputState->Buttons |= Button_Console;
+    if (GetAsyncKeyState(VK_LEFT) & 0x8000)
+        InputState->Buttons |= Button_Left;
+    if (GetAsyncKeyState(VK_RIGHT) & 0x8000)
+        InputState->Buttons |= Button_Right;
     
     //Movement
     if ((GetAsyncKeyState('A') & 0x8000))

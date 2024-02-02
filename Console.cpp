@@ -4,7 +4,6 @@ void RunCommand(console* Console, string Command)
     {
         Console->TargetHeight = 0.0f;
     }
-    
 }
 
 static void
@@ -47,6 +46,16 @@ UpdateConsole(console* Console, game_input* Input, f32 DeltaTime)
     //Update input
     if (IsOpen)
     {
+        if (Input->ButtonDown & Button_Left)
+        {
+            Console->InputCursor = Max(0, Console->InputCursor - 1);
+        }
+        
+        if (Input->ButtonDown & Button_Right)
+        {
+            Console->InputCursor = Min(Console->InputLength, Console->InputCursor + 1);
+        }
+        
         //Clear input to prevent other actions
         Input->Button = 0;
         Input->ButtonDown = 0;
@@ -60,16 +69,33 @@ UpdateConsole(console* Console, game_input* Input, f32 DeltaTime)
             char C = *TextInput;
             if (C == '\n')
             {
-                string Command = {Console->InputBuffer, Console->InputBufferLength};
+                string Command = {Console->Input, (u32)Console->InputLength};
                 RunCommand(Console, Command);
                 
-                Console->InputBufferLength = 0;
+                Console->InputLength = 0;
+                Console->InputCursor = 0;
+            }
+            else if (C == '\b')
+            {
+                if (Console->InputCursor > 0)
+                {
+                    memmove(Console->Input + Console->InputCursor - 1, 
+                            Console->Input + Console->InputCursor,
+                            Console->InputLength - Console->InputCursor);
+                    Console->InputLength--;
+                    Console->InputCursor--;
+                }
             }
             else
             {
-                if (Console->InputBufferLength + 1 < ArrayCount(Console->InputBuffer))
+                if (Console->InputLength + 1 < ArrayCount(Console->Input))
                 {
-                    Console->InputBuffer[Console->InputBufferLength++] = C;
+                    memmove(Console->Input + Console->InputCursor + 1, 
+                            Console->Input + Console->InputCursor,
+                            Console->InputLength - Console->InputCursor);
+                    
+                    Console->Input[Console->InputCursor++] = C;
+                    Console->InputLength++;
                 }
             }
         }
@@ -91,15 +117,19 @@ DrawConsole(console* Console)
     PlatformRectangle(V2(X0, Y0 + InputTextHeight), V2(Width, Console->Height), 0xC0FFFFFF);
     PlatformRectangle(V2(X0, Y0), V2(Width, InputTextHeight), 0xFF000000);
     
-    string Input = {Console->InputBuffer, Console->InputBufferLength};
-    f32 TextWidth = DrawString(V2(X0, Y0), Input, InputTextHeight);
+    string InputA = {Console->Input, (u32)Console->InputCursor};
+    string InputB = {Console->Input + Console->InputCursor, (u32)(Console->InputLength - Console->InputCursor)};
+    
+    f32 WidthA = DrawString(V2(X0, Y0), InputA, InputTextHeight);
     
     //Draw cursor
     if (Console->CursorOn)
     {
         f32 CursorPad = 0.002f;
-        PlatformRectangle(V2(X0 + TextWidth, Y0 + CursorPad), 
+        PlatformRectangle(V2(X0 + WidthA, Y0 + CursorPad), 
                           V2(CursorPad, InputTextHeight - 2.0f * CursorPad),
                           0xFFFFFFFF);
     }
+    
+    DrawString(V2(X0 + WidthA, Y0), InputB, InputTextHeight);
 }
