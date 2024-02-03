@@ -17,13 +17,6 @@ typedef double f64;
 #define Megabytes(n) (n * 1024 * 1024)
 
 #define ArrayCount(x) (sizeof((x))/sizeof((x)[0]))
-#define CopyArray(dest, src) \
-static_assert(ArrayLength(dest) == ArrayLength(src), "Incorrect use of CopyArray"); \
-for (int i = 0; i < ArrayLength(src); i++) \
-dest[i] = src[i];
-#define ZeroArray(arr) \
-for (int i = 0; i < ArrayLength(arr); i++) \
-arr[i] = {};
 
 struct string
 {
