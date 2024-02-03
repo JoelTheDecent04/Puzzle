@@ -23,7 +23,7 @@ TestAABBAABBCollision(rigid_body* A, rigid_body* B)
     collision Result = {};
     
     rect RectA = RectOf(*A);
-    rect RectB = RectOf(*A);
+    rect RectB = RectOf(*B);
     
     if (RectanglesCollide(RectA, RectB))
     {

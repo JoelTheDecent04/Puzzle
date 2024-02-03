@@ -469,7 +469,7 @@ RunEditor(game_state* GameState, game_input* Input, allocator Allocator)
     }
     
     //Clicking another element
-    if ((Input->Button & Button_LMouse) && !GUIInputIsBeingHandled())
+    if ((Input->ButtonDown & Button_LMouse) && !GUIInputIsBeingHandled())
     {
         for (u32 MapElementIndex = 0; MapElementIndex < Map->Elements.Count; MapElementIndex++)
         {
