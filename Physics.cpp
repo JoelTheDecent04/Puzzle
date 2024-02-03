@@ -1,5 +1,6 @@
 struct collision
 {
+    bool DidCollide;
     v2 Normal;
     f32 Penetration;
 };
@@ -12,10 +13,10 @@ RectOf(rigid_body RigidBody)
     return {MinCorner, MaxCorner};
 }
 
-static inline bool
-TestAABBCollision(rect RectA, rect RectB, collision* Collision)
+static collision
+TestAABBCollision(rect RectA, rect RectB)
 {
-    bool Result = false;
+    collision Result = {};
     
     if (RectanglesCollide(RectA, RectB))
     {
@@ -44,14 +45,14 @@ TestAABBCollision(rect RectA, rect RectB, collision* Collision)
             }
         }
         
-        *Collision = {};
-        Collision->Normal = Normal;
-        Collision->Penetration = Penetration;
-        
-        Result = true;
+        Result.DidCollide = true;
+        Result.Normal = Normal;
+        Result.Penetration = Penetration;
     }
     return Result;
 }
+
+
 
 static void
 PhysicsUpdate(span<rigid_body> RigidBodies, f32 DeltaTime, v2 Movement, rigid_body* Controlling)
@@ -86,8 +87,8 @@ PhysicsUpdate(span<rigid_body> RigidBodies, f32 DeltaTime, v2 Movement, rigid_bo
             {
                 rigid_body* B = RigidBodies + IndexB;
                 
-                collision Collision;
-                if (TestAABBCollision(RectOf(*A), RectOf(*B), &Collision))
+                collision Collision = TestAABBCollision(RectOf(*A), RectOf(*B));
+                if (Collision.DidCollide)
                 {
                     f32 SumInverseMass = A->InvMass + B->InvMass;
                     
