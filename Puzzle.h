@@ -51,7 +51,7 @@ struct map_element
 
 enum rigid_body_type
 {
-    RigidBody_Rectangle,
+    RigidBody_AABB,
     RigidBody_Circle
 };
 

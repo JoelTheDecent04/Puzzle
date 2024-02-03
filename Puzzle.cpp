@@ -357,14 +357,14 @@ DrawGame(game_state* GameState, memory_arena* Arena)
             {
                 if (GameState->Editing)
                 {
-                    PlatformRectangle(MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, MapElement.Color);
+                    PlatformRectangle(MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, 0xFFFF0000);
                 }
             } break;
             case MapElem_Circle:
             {
                 if (GameState->Editing)
                 {
-                    PlatformCircle(MapElement.Shape.Position, 0.5f * MapElement.Shape.Size.X, MapElement.Color);
+                    PlatformCircle(MapElement.Shape.Position, 0.5f * MapElement.Shape.Size.X, 0xFFFF0000);
                 }
             }
             case MapElem_Window:
@@ -390,7 +390,7 @@ DrawGame(game_state* GameState, memory_arena* Arena)
             rigid_body* RigidBody = GameState->Map->RigidBodies + Entity.RigidBodyIndex;
             switch (RigidBody->Type)
             {
-                case RigidBody_Rectangle:
+                case RigidBody_AABB:
                 {
                     PlatformRectangle(RigidBody->P - 0.5f * RigidBody->Size, RigidBody->Size, 0xFFFFFFFF);
                 } break;

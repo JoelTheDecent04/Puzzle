@@ -77,7 +77,7 @@ BoundingBox(map_element* MapElem)
     rect Rect = {};
     switch (MapElem->Type)
     {
-        case MapElem_Rectangle: case MapElem_Receiver: case MapElem_Laser: case MapElem_Box: case MapElem_Goal: case MapElem_Window:
+        case MapElem_Rectangle: case MapElem_Receiver: case MapElem_Laser: case MapElem_Box: case MapElem_Goal: case MapElem_Window: case MapElem_Circle:
         {
             Rect = {
                 MapElem->Shape.Position - 0.5f * MapElem->Shape.Size,
@@ -296,7 +296,7 @@ RunEditor(game_state* GameState, game_input* Input, allocator Allocator)
         map_element Box = { MapElem_Box };
         Box.Shape.Position = ScreenCenter;
         Box.Shape.Size = BoxSize;
-        Box.Color = 0xFFFF0000;
+        Box.Color = 0xFFFFFFFF;
         Add(&Map->Elements, &Box, PArena);
     }
     
@@ -545,7 +545,7 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
             {
                 u32 RigidBodyIndex = RigidBodyCount++;
                 rigid_body* RigidBody = RigidBodies + RigidBodyIndex;
-                RigidBody->Type = RigidBody_Rectangle;
+                RigidBody->Type = RigidBody_AABB;
                 RigidBody->P = MapElement->Shape.Position;
                 RigidBody->Size  = MapElement->Shape.Size;
                 RigidBody->InvMass = 1.0f;
