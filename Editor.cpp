@@ -516,26 +516,19 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
     ResetArena(MapArena);
     
     u32 ComponentMaxCount = Map->Elements.Count + 1; //One for the player
-    span<rigid_body> RigidBodies = AllocSpan(MapArena, rigid_body, ComponentMaxCount);
-    span<entity> Entities = AllocSpan(MapArena, entity, ComponentMaxCount);
-    span<attachment> Attachments = AllocSpan(MapArena, attachment, ComponentMaxCount);
-    
-    u32 RigidBodyCount = 0;
-    u32 BoxCount = 0;
-    u32 AttachmentCount = 0;
+    static_array<rigid_body> RigidBodies = AllocStaticArray(MapArena, rigid_body, ComponentMaxCount);
+    static_array<entity> Entities =        AllocStaticArray(MapArena, entity, ComponentMaxCount);
+    static_array<attachment> Attachments = AllocStaticArray(MapArena, attachment, ComponentMaxCount);
     
     Map->Player = {};
     
-    u32 PlayerRigidBodyIndex = RigidBodyCount++;
-    rigid_body* PlayerRigidBody = RigidBodies + PlayerRigidBodyIndex;
+    rigid_body PlayerRigidBody = {};
+    PlayerRigidBody.P = V2(0.5f, 0.3f);
+    PlayerRigidBody.Size = V2(0.025f, 0.025f);
+    PlayerRigidBody.InvMass = 1.0f;
     
-    PlayerRigidBody->P = V2(0.5f, 0.3f);
-    PlayerRigidBody->Size = V2(0.025f, 0.025f);
-    PlayerRigidBody->InvMass = 1.0f;
+    Map->Player.RigidBodyIndex = Add(&RigidBodies, PlayerRigidBody);
     
-    Map->Player.RigidBodyIndex = PlayerRigidBodyIndex;
-    
-    u32 EntityCount = 0;
     for (u32 MapElementIndex = 0; MapElementIndex < Map->Elements.Count; MapElementIndex++)
     {
         map_element* MapElement = Map->Elements + MapElementIndex;
@@ -543,18 +536,18 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
         {
             case MapElem_Box:
             {
-                u32 RigidBodyIndex = RigidBodyCount++;
-                rigid_body* RigidBody = RigidBodies + RigidBodyIndex;
-                RigidBody->Type = RigidBody_AABB;
-                RigidBody->P = MapElement->Shape.Position;
-                RigidBody->Size  = MapElement->Shape.Size;
-                RigidBody->InvMass = 1.0f;
+                rigid_body RigidBody = {};
+                RigidBody.Type = RigidBody_AABB;
+                RigidBody.P = MapElement->Shape.Position;
+                RigidBody.Size  = MapElement->Shape.Size;
+                RigidBody.InvMass = 1.0f;
                 
-                u32 EntityIndex = EntityCount++;
-                entity* Entity = Entities + EntityIndex;
-                Entity->RigidBodyIndex = RigidBodyIndex;
-                Entity->Color = 0xFFFFFFFF;
+                entity Entity = {};
+                Entity.RigidBodyIndex = Add(&RigidBodies, RigidBody);
+                Entity.Color = 0xFFFFFFFF;
+                Add(&Entities, Entity);
                 
+                /*
                 if (MapElement->AttachedTo)
                 {
                     attachment Attachment = {};
@@ -566,48 +559,33 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
                     
                     Attachments[AttachmentCount++] = Attachment;
                 }
+*/
                 
             } break;
             case MapElem_Circle:
             {
-                u32 RigidBodyIndex = RigidBodyCount++;
-                rigid_body* RigidBody = RigidBodies + RigidBodyIndex;
-                RigidBody->Type = RigidBody_Circle;
-                RigidBody->P = MapElement->Shape.Position;
-                RigidBody->Size  = MapElement->Shape.Size;
-                RigidBody->InvMass = 1.0f;
+                rigid_body RigidBody = {};
+                RigidBody.Type = RigidBody_Circle;
+                RigidBody.P = MapElement->Shape.Position;
+                RigidBody.Size  = MapElement->Shape.Size;
+                RigidBody.InvMass = 1.0f;
                 
-                u32 EntityIndex = EntityCount++;
-                entity* Entity = Entities + EntityIndex;
-                Entity->RigidBodyIndex = RigidBodyIndex;
-                Entity->Color = 0xFFFFFFFF;
+                entity Entity = {};
+                Entity.RigidBodyIndex = Add(&RigidBodies, RigidBody);
+                Entity.Color = 0xFFFFFFFF;
+                Add(&Entities, Entity);
             } break;
-            case MapElem_Rectangle:
+            case MapElem_Rectangle: case MapElem_Window:
             {
-                rigid_body* RigidBody = &RigidBodies[RigidBodyCount++];
-                RigidBody->P = MapElement->Shape.Position;
-                RigidBody->Size  = MapElement->Shape.Size;
-                RigidBody->InvMass = 0.0f;
-            } break;
-            case MapElem_Window:
-            {
-                rigid_body* RigidBody = &RigidBodies[RigidBodyCount++];
-                RigidBody->P = MapElement->Shape.Position;
-                RigidBody->Size  = MapElement->Shape.Size;
-                RigidBody->InvMass = 0.0f;
-                RigidBody->Transparent = true;
+                rigid_body RigidBody = {};
+                RigidBody.P = MapElement->Shape.Position;
+                RigidBody.Size  = MapElement->Shape.Size;
+                RigidBody.InvMass = 0.0f;
+                RigidBody.Transparent = (MapElement->Type == MapElem_Window);
+                Add(&RigidBodies, RigidBody);
             } break;
         }
     }
-    
-    Assert(RigidBodyCount <= ComponentMaxCount);
-    RigidBodies.Count = RigidBodyCount;
-    
-    Assert(BoxCount <= ComponentMaxCount);
-    Entities.Count = EntityCount;
-    
-    Assert(AttachmentCount <= ComponentMaxCount);
-    Attachments.Count = AttachmentCount;
     
     Map->RigidBodies = RigidBodies;
     Map->Entities = Entities;

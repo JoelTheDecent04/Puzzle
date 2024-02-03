@@ -271,7 +271,7 @@ SimulateGame(game_state* GameState, game_input* Input, f32 DeltaTime, memory_are
             Controlling->dP.Y = 1.5f;
         }
         
-        PhysicsUpdate(GameState->Map->RigidBodies, DeltaTime, Movement, Controlling);
+        PhysicsUpdate(ToSpan(GameState->Map->RigidBodies), DeltaTime, Movement, Controlling);
     }
     
     for (attachment Attachment : GameState->Map->Attachments)

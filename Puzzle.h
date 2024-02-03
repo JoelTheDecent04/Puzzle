@@ -68,20 +68,23 @@ struct rigid_body
     bool Transparent;
 };
 
-/*
-struct entity
+enum entity_type
 {
-    v2 P, dP;
-    bool HasUpdated;
-    v2 Size;
-    
-    u32 MapElementAttachmentIndex;
-    v2 MapElementAttachmentOffset;
-};*/
+    Entity_Null,
+    Entity_Player,
+    Entity_Laser,
+    Entity_Reflector,
+};
 
 struct entity
 {
+    entity_type Type;
+    
     u32 RigidBodyIndex;
+    
+    //If there is no rigid body:
+    shape Shape;
+    
     u32 Color;
 };
 
@@ -101,11 +104,11 @@ struct map_desc
 {
     dynamic_array<map_element> Elements;
     
-    span<rigid_body> RigidBodies;
-    span<attachment> Attachments;
-    
-    span<entity> Entities;
     player Player;
+    static_array<entity> Entities;
+    
+    static_array<rigid_body> RigidBodies;
+    static_array<attachment> Attachments;
 };
 
 struct saved_map_header

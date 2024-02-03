@@ -229,34 +229,58 @@ operator+(span<type> Span, u32 Index)
 }
 
 template <typename type>
-struct array
+struct static_array
 {
     type* Memory;
     u32 Count;
     u32 Capacity;
-}
+    
+    type& operator[](u32 Index)
+    {
+        Assert(Index < Count);
+        return Memory[Index];
+    }
+};
 
 template<typename type>
-static type* begin(array<type> Array)
+static type* begin(static_array<type> Array)
 {
     return Array.Memory;
 }
 
 template<typename type>
-static type* end(array<type> Array)
+static type* end(static_array<type> Array)
 {
     return Array.Memory + Array.Count;
 }
 
 template <typename type>
-static inline void Add(array<type>* Array, type NewElement)
+static inline u32 Add(static_array<type>* Array, type NewElement)
 {
     Assert(Array->Count < Array->Capacity);
-    Array->Memory[Array->Count++] = NewElement;
+    Array->Memory[Array->Count] = NewElement;
+    u32 Result = Array->Count;
+    Array->Count++;
+    return Result;
 }
 
-#define AllocArray(Arena, Type, Capacity) \
-(array<Type> {AllocArray(Arena, Type, Capacity), 0, Capacity})
+template <typename type>
+type* operator+(static_array<type> Array, u32 Index)
+{
+	return &Array[Index];
+}
+
+#define AllocStaticArray(Arena, Type, Capacity) \
+(static_array<Type> {AllocArray(Arena, Type, Capacity), 0, Capacity})
+
+template <typename type>
+static span<type> ToSpan(static_array<type> Array)
+{
+    span<type> Span = {};
+    Span.Memory = Array.Memory;
+    Span.Count = Array.Count;
+    return Span;
+}
 
 template <typename type>
 struct dynamic_array
