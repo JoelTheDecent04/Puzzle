@@ -81,16 +81,9 @@ struct entity
     entity_type Type;
     
     u32 RigidBodyIndex;
-    
-    //If there is no rigid body:
-    shape Shape;
+    u32 LineIndex;
     
     u32 Color;
-};
-
-struct player
-{
-    u32 RigidBodyIndex;
 };
 
 struct attachment
@@ -100,15 +93,22 @@ struct attachment
     v2 Offset;
 };
 
+struct line
+{
+    line_segment LineSegment;
+    bool Reflective;
+};
+
 struct map_desc
 {
     dynamic_array<map_element> Elements;
     
-    player Player;
+    entity Player;
     static_array<entity> Entities;
     
     static_array<rigid_body> RigidBodies;
     static_array<attachment> Attachments;
+    static_array<line> Lines;
 };
 
 struct saved_map_header

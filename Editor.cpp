@@ -519,15 +519,17 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
     static_array<rigid_body> RigidBodies = AllocStaticArray(MapArena, rigid_body, ComponentMaxCount);
     static_array<entity> Entities =        AllocStaticArray(MapArena, entity, ComponentMaxCount);
     static_array<attachment> Attachments = AllocStaticArray(MapArena, attachment, ComponentMaxCount);
-    
-    Map->Player = {};
+    static_array<line> Lines =             AllocStaticArray(MapArena, line, ComponentMaxCount);
     
     rigid_body PlayerRigidBody = {};
     PlayerRigidBody.P = V2(0.5f, 0.3f);
     PlayerRigidBody.Size = V2(0.025f, 0.025f);
     PlayerRigidBody.InvMass = 1.0f;
     
-    Map->Player.RigidBodyIndex = Add(&RigidBodies, PlayerRigidBody);
+    
+    entity* Player = &Map->Player;
+    *Player = {Entity_Player};
+    Player->RigidBodyIndex = Add(&RigidBodies, PlayerRigidBody);
     
     for (u32 MapElementIndex = 0; MapElementIndex < Map->Elements.Count; MapElementIndex++)
     {
@@ -584,12 +586,23 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
                 RigidBody.Transparent = (MapElement->Type == MapElem_Window);
                 Add(&RigidBodies, RigidBody);
             } break;
+            case MapElem_Reflector: case MapElem_Line:
+            {
+                line Line = {};
+                Line.LineSegment = {MapElement->Shape.Position, MapElement->Shape.Position + MapElement->Shape.Size};
+                Line.Reflective = (MapElement->Type == MapElem_Reflector);
+                
+                entity Entity = {};
+                Entity.LineIndex = Add(&Lines, Line);
+                Add(&Entities, Entity);
+            } break;
         }
     }
     
     Map->RigidBodies = RigidBodies;
     Map->Entities = Entities;
     Map->Attachments = Attachments;
+    Map->Lines = Lines;
 }
 
 static void

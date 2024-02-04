@@ -8,18 +8,6 @@
 static void
 PhysicsUpdate(span<rigid_body> RigidBodies, f32 DeltaTime, v2 Movement, rigid_body* Controlling);
 
-static inline line_segment
-GetLine(map_element MapElem)
-{
-    Assert(MapElem.Type == MapElem_Line || MapElem.Type == MapElem_Reflector);
-    
-    line_segment Rect = {
-        MapElem.Shape.Start,
-        MapElem.Shape.Start + MapElem.Shape.Offset
-    };
-    return Rect;
-}
-
 struct ray_collision
 {
     bool DidHit;
@@ -77,40 +65,15 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, game_state* GameState, map
         
         map_desc* Map = GameState->Map;
         
-        for (map_element& MapElement : Map->Elements)
+        for (line Line : Map->Lines)
         {
-            switch (MapElement.Type)
+            ray_collision Collision = TestRayIntersection(P, Direction, Line.LineSegment);
+            
+            if (Collision.DidHit && Collision.t < tMin)
             {
-                case MapElem_Reflector: case MapElem_Line:
-                {
-                    ray_collision Collision = TestRayIntersection(P, Direction, GetLine(MapElement));
-                    
-                    if (Collision.DidHit && Collision.t < tMin)
-                    {
-                        NearestCollision = Collision;
-                        tMin = Collision.t;
-                        WillReflect = (MapElement.Type == MapElem_Reflector);
-                        NearestMapElement = &MapElement;
-                    }
-                } break;
-                
-                case MapElem_Rectangle: case MapElem_Receiver:
-                {
-                    /*
-                    rect_edges BoxEdges = GetEdges(&MapElement);
-                    for (int i = 0; i < 4; i++)
-                    {
-                        ray_collision Collision = TestRayIntersection(P, Direction, BoxEdges.Edges[i]);
-                        
-                        if (Collision.DidHit && Collision.t < tMin)
-                        {
-                            NearestCollision = Collision;
-                            tMin = Collision.t;
-                            WillReflect = false;
-                            NearestMapElement = &MapElement;
-                        }
-                    }*/
-                } break;
+                NearestCollision = Collision;
+                tMin = Collision.t;
+                WillReflect = Line.Reflective;
             }
         }
         
