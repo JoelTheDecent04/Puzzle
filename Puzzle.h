@@ -1,3 +1,6 @@
+#include <vector>
+#include <string>
+
 enum map_elem_type
 {
     MapElem_Null,
@@ -139,6 +142,8 @@ struct console
 {
     f32 Height;
     f32 TargetHeight;
+    
+    string History[16];
     
     char Input[256];
     int InputLength;

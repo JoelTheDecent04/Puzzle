@@ -406,7 +406,7 @@ DrawGame(game_state* GameState, memory_arena* Arena)
 
 void GameUpdateAndRender(game_state* GameState, float DeltaTime, game_input* Input, allocator Allocator)
 {
-    UpdateConsole(&GameState->Console, Input, DeltaTime);
+    UpdateConsole(GameState, &GameState->Console, Input, Allocator.Transient, DeltaTime);
     
     if (!GameState->Editing && (Input->ButtonDown & Button_Interact))
     {
