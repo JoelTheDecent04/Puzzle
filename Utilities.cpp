@@ -341,3 +341,15 @@ Array(span<type> Span)
     Array.Capacity = Span.Count;
     return Array;
 }
+
+static u32 
+StringToU32(string String)
+{
+    u32 Result = 0;
+    for (u32 I = 0; I < String.Length; I++)
+    {
+        char C = String.Text[I];
+        Result = Result * 10 + (C - '0');
+    }
+    return Result;
+}

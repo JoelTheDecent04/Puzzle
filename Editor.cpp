@@ -520,34 +520,36 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
     static_array<entity> Entities =        AllocStaticArray(MapArena, entity, ComponentMaxCount);
     static_array<attachment> Attachments = AllocStaticArray(MapArena, attachment, ComponentMaxCount);
     static_array<line> Lines =             AllocStaticArray(MapArena, line, ComponentMaxCount);
+    static_array<laser> Lasers =           AllocStaticArray(MapArena, laser, ComponentMaxCount);
     
     rigid_body PlayerRigidBody = {};
     PlayerRigidBody.P = V2(0.5f, 0.3f);
     PlayerRigidBody.Size = V2(0.025f, 0.025f);
     PlayerRigidBody.InvMass = 1.0f;
-    
+    PlayerRigidBody.Color = 0xFFC0C0C0;
     
     entity* Player = &Map->Player;
     *Player = {Entity_Player};
     Player->RigidBodyIndex = Add(&RigidBodies, PlayerRigidBody);
     
-    for (u32 MapElementIndex = 0; MapElementIndex < Map->Elements.Count; MapElementIndex++)
+    for (map_element& MapElem : Map->Elements)
     {
-        map_element* MapElement = Map->Elements + MapElementIndex;
-        switch (MapElement->Type)
+        u32 RigidBodyIndex = 0;
+        u32 LineIndex = 0;
+        u32 LaserIndex = 0;
+        
+        switch (MapElem.Type)
         {
             case MapElem_Box:
             {
                 rigid_body RigidBody = {};
                 RigidBody.Type = RigidBody_AABB;
-                RigidBody.P = MapElement->Shape.Position;
-                RigidBody.Size  = MapElement->Shape.Size;
+                RigidBody.P = MapElem.Shape.Position;
+                RigidBody.Size  = MapElem.Shape.Size;
                 RigidBody.InvMass = 1.0f;
+                RigidBody.Color = MapElem.Color;
                 
-                entity Entity = {};
-                Entity.RigidBodyIndex = Add(&RigidBodies, RigidBody);
-                Entity.Color = 0xFFFFFFFF;
-                Add(&Entities, Entity);
+                RigidBodyIndex = Add(&RigidBodies, RigidBody);
                 
                 /*
                 if (MapElement->AttachedTo)
@@ -568,41 +570,83 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
             {
                 rigid_body RigidBody = {};
                 RigidBody.Type = RigidBody_Circle;
-                RigidBody.P = MapElement->Shape.Position;
-                RigidBody.Size  = MapElement->Shape.Size;
+                RigidBody.P = MapElem.Shape.Position;
+                RigidBody.Size  = MapElem.Shape.Size;
                 RigidBody.InvMass = 1.0f;
+                RigidBody.Color = MapElem.Color;
                 
-                entity Entity = {};
-                Entity.RigidBodyIndex = Add(&RigidBodies, RigidBody);
-                Entity.Color = 0xFFFFFFFF;
-                Add(&Entities, Entity);
+                RigidBodyIndex = Add(&RigidBodies, RigidBody);
+                
             } break;
-            case MapElem_Rectangle: case MapElem_Window:
+            case MapElem_Rectangle: case MapElem_Window: case MapElem_Receiver:
             {
                 rigid_body RigidBody = {};
-                RigidBody.P = MapElement->Shape.Position;
-                RigidBody.Size  = MapElement->Shape.Size;
+                RigidBody.P = MapElem.Shape.Position;
+                RigidBody.Size  = MapElem.Shape.Size;
                 RigidBody.InvMass = 0.0f;
-                RigidBody.Transparent = (MapElement->Type == MapElem_Window);
-                Add(&RigidBodies, RigidBody);
+                RigidBody.Transparent = (MapElem.Type == MapElem_Window || MapElem.Type == MapElem_Laser);
+                RigidBody.Color = MapElem.Color;
+                RigidBody.ActivatedByIndex = MapElem.ActivatedBy;
+                RigidBody.ActivatedP = MapElem.ActivatedShape.Position;
+                RigidBody.ActivatedSize = MapElem.ActivatedShape.Size;
+                RigidBody.UnactivatedP = MapElem.UnactivatedShape.Position;
+                RigidBody.UnactivatedSize = MapElem.UnactivatedShape.Size;
+                
+                RigidBodyIndex = Add(&RigidBodies, RigidBody);
             } break;
             case MapElem_Reflector: case MapElem_Line:
             {
                 line Line = {};
-                Line.LineSegment = {MapElement->Shape.Position, MapElement->Shape.Position + MapElement->Shape.Size};
-                Line.Reflective = (MapElement->Type == MapElem_Reflector);
+                Line.Color = MapElem.Color;
+                Line.LineSegment = {MapElem.Shape.Start, MapElem.Shape.Start + MapElem.Shape.Offset};
+                Line.Reflective = (MapElem.Type == MapElem_Reflector);
                 
-                entity Entity = {};
-                Entity.LineIndex = Add(&Lines, Line);
-                Add(&Entities, Entity);
+                LineIndex = Add(&Lines, Line);
             } break;
+            case MapElem_Laser:
+            {
+                laser Laser = {};
+                Laser.Color = MapElem.Color;
+                Laser.Angle = MapElem.Angle;
+                Laser.Position = MapElem.Shape.Position;
+                
+                LaserIndex = Add(&Lasers, Laser);
+                
+                rigid_body RigidBody = {};
+                RigidBody.P = MapElem.Shape.Position;
+                RigidBody.Size  = MapElem.Shape.Size;
+                RigidBody.InvMass = 0.0f;
+                RigidBody.Transparent = true;
+                RigidBody.Color = MapElem.Color;
+                
+                RigidBodyIndex = Add(&RigidBodies, RigidBody);
+            }
+        }
+        
+        entity Entity = {};
+        Entity.RigidBodyIndex = RigidBodyIndex;
+        Entity.LineIndex = LineIndex;
+        Entity.LaserIndex = LaserIndex;
+        
+        u32 EntityIndex = Add(&Entities, Entity);
+        
+        if (RigidBodyIndex)
+        {
+            RigidBodies[RigidBodyIndex].EntityIndex = EntityIndex;
+        }
+        if (LineIndex)
+        {
+            Lines[LineIndex].EntityIndex = EntityIndex;
         }
     }
     
-    Map->RigidBodies = RigidBodies;
+    
     Map->Entities = Entities;
+    
+    Map->RigidBodies = RigidBodies;
     Map->Attachments = Attachments;
     Map->Lines = Lines;
+    Map->Lasers = Lasers;
 }
 
 static void

@@ -45,9 +45,6 @@ struct map_element
     u32 Color;
     f32 Angle;
     
-    bool WasActivated;
-    bool Activated;
-    
     u32 AttachedTo;
     v2 AttachmentOffset;
 };
@@ -60,15 +57,21 @@ enum rigid_body_type
 
 struct rigid_body
 {
-    rigid_body_type Type;
+    u32 EntityIndex;
+    u32 Color;
     
+    //TODO: Should this be here?
+    bool Transparent;
+    
+    rigid_body_type Type;
     v2 P;
     v2 dP;
     v2 Size;
     f32 InvMass;
     
-    //TODO: Should this be here?
-    bool Transparent;
+    u32 ActivatedByIndex;
+    v2 ActivatedP, UnactivatedP;
+    v2 ActivatedSize, UnactivatedSize;
 };
 
 enum entity_type
@@ -77,16 +80,20 @@ enum entity_type
     Entity_Player,
     Entity_Laser,
     Entity_Reflector,
+    Entity_Receiver,
+    Entity_Circle,
+    Entity_Box
 };
 
 struct entity
 {
     entity_type Type;
+    bool Activated;
     
     u32 RigidBodyIndex;
+    u32 AttachmentIndex;
     u32 LineIndex;
-    
-    u32 Color;
+    u32 LaserIndex;
 };
 
 struct attachment
@@ -98,8 +105,19 @@ struct attachment
 
 struct line
 {
+    u32 EntityIndex;
+    
+    u32 Color;
     line_segment LineSegment;
     bool Reflective;
+};
+
+struct laser
+{
+    v2 Position;
+    u32 Color;
+    f32 Angle;
+    u32 ActivatedByIndex;
 };
 
 struct map_desc
@@ -112,6 +130,7 @@ struct map_desc
     static_array<rigid_body> RigidBodies;
     static_array<attachment> Attachments;
     static_array<line> Lines;
+    static_array<laser> Lasers;
 };
 
 struct saved_map_header

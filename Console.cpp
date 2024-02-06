@@ -19,7 +19,37 @@ RunCommand(int ArgCount, string* Args, game_state* GameState, memory_arena* TAre
         Result = ArenaPrint(TArena, "%u null elements", Count);
     }
     
+    if (StringsAreEqual(Args[0], String("activated")) && ArgCount == 2)
+    {
+        u32 EntityIndex = StringToU32(Args[1]);
+        
+        if (EntityIndex < GameState->Map->Entities.Count)
+        {
+            bool Activated = GameState->Map->Entities[EntityIndex].Activated;
+            Result = ArenaPrint(TArena, "%u activated: %u", EntityIndex, Activated);
+        }
+        else
+        {
+            Result = String("Out of range");
+        }
+    }
+    
     return Result;
+}
+
+static void
+AddLine(console* Console, string String)
+{
+    u32 Bytes = String.Length;
+    string NewLine = {};
+    NewLine.Length = Bytes;
+    NewLine.Text = (char*)malloc(Bytes);
+    memcpy(NewLine.Text, String.Text, Bytes);
+    
+    u32 MaxHistory = ArrayCount(Console->History);
+    free(Console->History[MaxHistory - 1].Text);
+    memmove(Console->History + 1, Console->History, sizeof(string) * (MaxHistory - 1));
+    Console->History[0] = NewLine;
 }
 
 static void
@@ -66,18 +96,9 @@ ParseAndRunCommand(console* Console, string Command, game_state* GameState, memo
     }
     
     string Result = RunCommand(ArgCount, Args, GameState, TArena);
-    
+    AddLine(Console, Command);
+    AddLine(Console, Result);
     //TODO: This is probably not ideal
-    u32 Bytes = Result.Length;
-    string StoredResult = {};
-    StoredResult.Length = Bytes;
-    StoredResult.Text = (char*)malloc(Bytes);
-    memcpy(StoredResult.Text, Result.Text, Bytes);
-    
-    u32 MaxHistory = ArrayCount(Console->History);
-    free(Console->History[MaxHistory - 1].Text);
-    memmove(Console->History + 1, Console->History, sizeof(string) * (MaxHistory - 1));
-    Console->History[0] = StoredResult;
 }
 
 static void

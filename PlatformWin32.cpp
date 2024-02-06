@@ -132,14 +132,12 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 	RECT ClientRect = { 0, 0, BufferWidth, BufferHeight };
 	AdjustWindowRect(&ClientRect, WS_OVERLAPPEDWINDOW, FALSE);
 	
-	HWND Window = CreateWindow(
-                               WindowClass.lpszClassName,
+	HWND Window = CreateWindow(WindowClass.lpszClassName,
                                L"Puzzle Game",
                                WS_OVERLAPPEDWINDOW,
                                CW_USEDEFAULT, CW_USEDEFAULT, 
                                ClientRect.right - ClientRect.left, ClientRect.bottom - ClientRect.top,
-                               0, 0, Instance, 0
-                               );
+                               0, 0, Instance, 0);
     
 	if (D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, __uuidof(ID2D1Factory1), (void**) &GlobalScreen.D2DFactory) != S_OK)
 	{
@@ -382,6 +380,8 @@ KeyboardAndMouseInputState(input_state* InputState, HWND Window)
 {
     //Buttons
     if (GetAsyncKeyState('W') & 0x8000)
+        InputState->Buttons |= Button_Jump;
+    if (GetAsyncKeyState(VK_SPACE) & 0x8000)
         InputState->Buttons |= Button_Jump;
     if (GetAsyncKeyState('E') & 0x8000)
         InputState->Buttons |= Button_Interact;

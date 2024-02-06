@@ -5,8 +5,7 @@
 #include "Physics.cpp"
 #include "Console.cpp"
 
-static void
-PhysicsUpdate(span<rigid_body> RigidBodies, f32 DeltaTime, v2 Movement, rigid_body* Controlling);
+void PhysicsUpdate(span<rigid_body> RigidBodies, f32 DeltaTime, v2 Movement, rigid_body* Controlling);
 
 struct ray_collision
 {
@@ -45,11 +44,9 @@ struct laser_beam
 };
 
 static void
-CalculateReflections(laser_beam* Result, u32 MaxIter, game_state* GameState, map_element* Laser)
+CalculateReflections(laser_beam* Result, u32 MaxIter, map_desc* Map, laser* Laser)
 {
-    Assert(Laser->Type == MapElem_Laser);
-    
-    v2 P = Laser->Shape.Position;
+    v2 P = Laser->Position;
     f32 AngleRadians = Laser->Angle * 2 * 3.14159f;
     v2 Direction = { cosf(AngleRadians), sinf(AngleRadians) };
     
@@ -60,10 +57,8 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, game_state* GameState, map
     {
         f32 tMin = 100.0f;
         ray_collision NearestCollision = {};
-        map_element* NearestMapElement = 0;
+        u32 NearestCollisionEntityIndex = 0;
         bool WillReflect = 0;
-        
-        map_desc* Map = GameState->Map;
         
         for (line Line : Map->Lines)
         {
@@ -74,6 +69,7 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, game_state* GameState, map
                 NearestCollision = Collision;
                 tMin = Collision.t;
                 WillReflect = Line.Reflective;
+                NearestCollisionEntityIndex = Line.EntityIndex;
             }
         }
         
@@ -103,10 +99,9 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, game_state* GameState, map
                     NearestCollision = Collision;
                     tMin = Collision.t;
                     WillReflect = false;
-                    NearestMapElement = 0;
+                    NearestCollisionEntityIndex = RigidBody.EntityIndex;
                 }
             }
-            
         }
         
         if (NearestCollision.DidHit)
@@ -116,9 +111,9 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, game_state* GameState, map
             LaserBeam->End = NearestCollision.P;
             LaserBeam->Color = Laser->Color;
             
-            if (NearestMapElement)
+            if (NearestCollisionEntityIndex)
             {
-                NearestMapElement->Activated = true;
+                Map->Entities[NearestCollisionEntityIndex].Activated = true;
             }
             
             if (WillReflect)
@@ -138,16 +133,15 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, game_state* GameState, map
         }
     }
     
-    if (!Done && (Iter < MaxIter))
+    if (!Done && Iter == MaxIter)
     {
-        laser_beam* LaserBeam = &Result[Iter];
-        LaserBeam->Start = P;
-        LaserBeam->End = P + 10.0f * UnitV(Direction);
-        LaserBeam->Color = Laser->Color;
+        laser_beam* LastLaserBeam = &Result[MaxIter - 1];
+        LastLaserBeam->End = P + 10.0f * UnitV(Direction);
     }
 }
 
-void LoadMaps(allocator Allocator, game_state* Game)
+static void 
+LoadMaps(allocator Allocator, game_state* Game)
 {
     u32 MaxMapCount = 100;
     
@@ -197,31 +191,27 @@ SimulateGame(game_state* GameState, game_input* Input, f32 DeltaTime, memory_are
 {
     v2 Movement = Input->Movement;
     
-    for (map_element& MapElement : GameState->Map->Elements)
+    for (rigid_body& RigidBody : GameState->Map->RigidBodies)
     {
-        MapElement.WasActivated = MapElement.Activated;
-        MapElement.Activated = false;
-    }
-    
-    for (map_element& MapElement : GameState->Map->Elements)
-    {
-        if (MapElement.ActivatedBy)
+        if (RigidBody.ActivatedByIndex)
         {
-            bool Activated = GameState->Map->Elements[MapElement.ActivatedBy].WasActivated;
+            bool Activated = GameState->Map->Entities[RigidBody.ActivatedByIndex].Activated;
             
-            shape Target;
+            v2 TargetP, TargetSize;
             if (Activated)
             {
-                Target = MapElement.ActivatedShape;
+                TargetP = RigidBody.ActivatedP;
+                TargetSize = RigidBody.ActivatedSize;
             }
             else
             {
-                Target = MapElement.UnactivatedShape;
+                TargetP = RigidBody.UnactivatedP;
+                TargetSize = RigidBody.UnactivatedSize;
             }
-            f32 Speed = 3.0f;
             
-            MapElement.Shape.E1 = LinearInterpolate(MapElement.Shape.E1, Target.E1, DeltaTime * Speed);
-            MapElement.Shape.E2 = LinearInterpolate(MapElement.Shape.E2, Target.E2, DeltaTime * Speed);
+            f32 Speed = 3.0f;
+            RigidBody.P = LinearInterpolate(RigidBody.P, TargetP, DeltaTime * Speed);
+            RigidBody.Size = LinearInterpolate(RigidBody.Size, TargetSize, DeltaTime * Speed);
         }
     }
     
@@ -243,6 +233,11 @@ SimulateGame(game_state* GameState, game_input* Input, f32 DeltaTime, memory_are
         map_element* MapElement = GameState->Map->Elements + Attachment.ElementIndex;
         
         MapElement->Shape.Position = RigidBody->P + Attachment.Offset;
+    }
+    
+    for (entity& Entity : GameState->Map->Entities)
+    {
+        Entity.Activated = false;
     }
     
     /*
@@ -270,24 +265,9 @@ SimulateGame(game_state* GameState, game_input* Input, f32 DeltaTime, memory_are
 */
 }
 
-static void
-DrawGame(game_state* GameState, memory_arena* Arena)
+static void DrawMapForEditor(map_desc* Map)
 {
-    //Background
-    PlatformRectangle(V2(0, 0), V2(1.0f, ScreenTop), 0xFF4040C0);
-    
-    u32 BackgroundStripeColor = 0x20FFFFFF;
-    for (f32 X = 0.0f; X < 1.0f; X += 0.04f)
-    {
-        PlatformLine(V2(X, 0.0f), V2(X, ScreenTop), BackgroundStripeColor, 0.002f);
-    }
-    for (f32 Y = 0.0f; Y < ScreenTop; Y += 0.04f)
-    {
-        PlatformLine(V2(0.0f, Y), V2(1.0f, Y), BackgroundStripeColor, 0.002f);
-    }
-    
-    //Scene
-    for (map_element& MapElement : GameState->Map->Elements)
+    for (map_element& MapElement : Map->Elements)
     {
         switch (MapElement.Type)
         {
@@ -318,17 +298,12 @@ DrawGame(game_state* GameState, memory_arena* Arena)
             } break;
             case MapElem_Box:
             {
-                if (GameState->Editing)
-                {
-                    PlatformRectangle(MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, 0xFFFF0000);
-                }
+                PlatformRectangle(MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, 0xFFFF0000);
             } break;
             case MapElem_Circle:
             {
-                if (GameState->Editing)
-                {
-                    PlatformCircle(MapElement.Shape.Position, 0.5f * MapElement.Shape.Size.X, 0xFFFF0000);
-                }
+                
+                PlatformCircle(MapElement.Shape.Position, 0.5f * MapElement.Shape.Size.X, 0xFFFF0000);
             }
             case MapElem_Window:
             break; //Drawn later in transparent section
@@ -336,71 +311,88 @@ DrawGame(game_state* GameState, memory_arena* Arena)
         }
     }
     
-    //Player and boxes
-    if (!GameState->Editing)
-    {
-        //Player
-        u32 PlayerRigidBodyIndex = GameState->Map->Player.RigidBodyIndex;
-        if (PlayerRigidBodyIndex < GameState->Map->RigidBodies.Count)
-        {
-            rigid_body* RigidBody = GameState->Map->RigidBodies + PlayerRigidBodyIndex;
-            PlatformRectangle(RigidBody->P - 0.5f * RigidBody->Size, RigidBody->Size, 0xFFFFFFFF);
-        }
-        
-        //Boxes
-        for (entity& Entity : GameState->Map->Entities)
-        {
-            rigid_body* RigidBody = GameState->Map->RigidBodies + Entity.RigidBodyIndex;
-            switch (RigidBody->Type)
-            {
-                case RigidBody_AABB:
-                {
-                    PlatformRectangle(RigidBody->P - 0.5f * RigidBody->Size, RigidBody->Size, 0xFFFFFFFF);
-                } break;
-                case RigidBody_Circle:
-                {
-                    PlatformCircle(RigidBody->P, 0.5f * RigidBody->Size.X, 0xFFFFFFFF);
-                } break;
-            }
-        }
-    }
-    
-    //Lasers
-    for (map_element& MapElement : GameState->Map->Elements)
-    {
-        if (MapElement.Type == MapElem_Laser)
-        {
-            bool IsActive = (MapElement.ActivatedBy == 0) || GameState->Map->Elements[MapElement.ActivatedBy].WasActivated;
-            if (IsActive)
-            {
-                laser_beam LaserBeams[10] = {};
-                //TODO: Get count of laser beams of result
-                CalculateReflections(LaserBeams, ArrayCount(LaserBeams), GameState, &MapElement);
-                
-                for (laser_beam LaserBeam : LaserBeams)
-                {
-                    u32 RGB = (LaserBeam.Color & 0xFFFFFF);
-                    
-                    v2 Direction = UnitV(LaserBeam.End - LaserBeam.Start);
-                    
-                    PlatformLine(LaserBeam.Start, LaserBeam.End, RGB | 0x40000000, 0.008f);
-                    PlatformLine(LaserBeam.Start, LaserBeam.End, RGB | 0x80000000, 0.005f);
-                    PlatformLine(LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
-                                 RGB | 0xC0000000, 0.0025f);
-                    PlatformLine(LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
-                                 RGB | 0xFF000000, 0.001f);
-                }
-            }
-        }
-    }
     
     //Transparent (window)
-    for (map_element& MapElement : GameState->Map->Elements)
+    for (map_element& MapElement : Map->Elements)
     {
         if (MapElement.Type == MapElem_Window)
         {
             PlatformRectangle(MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, MapElement.Color);
         }
+    }
+}
+
+static void DrawMap(map_desc* Map)
+{
+    for (rigid_body RigidBody : Map->RigidBodies)
+    {
+        PlatformRectangle(RectOf(RigidBody), RigidBody.Color);
+    }
+    
+    for (line Line : Map->Lines)
+    {
+        PlatformLine(Line.LineSegment.Start, Line.LineSegment.End, Line.Color, 0.01f);
+    }
+    
+    for (laser& Laser : Map->Lasers)
+    {
+        //TODO: Check if activated
+        bool IsActive = true; //(MapElement.ActivatedByIndex == 0) || GameState->Map->Entities[MapElement.].WasActivated;
+        if (IsActive)
+        {
+            laser_beam LaserBeams[10] = {};
+            //TODO: Get count of laser beams of result
+            CalculateReflections(LaserBeams, ArrayCount(LaserBeams), Map, &Laser);
+            
+            for (laser_beam LaserBeam : LaserBeams)
+            {
+                u32 RGB = (LaserBeam.Color & 0xFFFFFF);
+                
+                v2 Direction = UnitV(LaserBeam.End - LaserBeam.Start);
+                
+                PlatformLine(LaserBeam.Start, LaserBeam.End, RGB | 0x40000000, 0.008f);
+                PlatformLine(LaserBeam.Start, LaserBeam.End, RGB | 0x80000000, 0.005f);
+                PlatformLine(LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
+                             RGB | 0xC0000000, 0.0025f);
+                PlatformLine(LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
+                             RGB | 0xFF000000, 0.001f);
+            }
+        }
+    }
+    
+    //Transparent (window)
+    for (map_element& MapElement : Map->Elements)
+    {
+        if (MapElement.Type == MapElem_Window)
+        {
+            PlatformRectangle(MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, MapElement.Color);
+        }
+    }
+}
+
+static void
+DrawGame(game_state* GameState, memory_arena* Arena)
+{
+    //Background
+    PlatformRectangle(V2(0, 0), V2(1.0f, ScreenTop), 0xFF4040C0);
+    
+    u32 BackgroundStripeColor = 0x20FFFFFF;
+    for (f32 X = 0.0f; X < 1.0f; X += 0.04f)
+    {
+        PlatformLine(V2(X, 0.0f), V2(X, ScreenTop), BackgroundStripeColor, 0.002f);
+    }
+    for (f32 Y = 0.0f; Y < ScreenTop; Y += 0.04f)
+    {
+        PlatformLine(V2(0.0f, Y), V2(1.0f, Y), BackgroundStripeColor, 0.002f);
+    }
+    
+    if (GameState->Editing)
+    {
+        DrawMapForEditor(GameState->Map);
+    }
+    else
+    {
+        DrawMap(GameState->Map);
     }
 }
 
