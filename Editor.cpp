@@ -509,7 +509,6 @@ RunEditor(game_state* GameState, game_input* Input, allocator Allocator)
     }
 }
 
-
 static void
 CreateComponents(map_desc* Map, memory_arena* MapArena)
 {
@@ -522,6 +521,9 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
     static_array<line> Lines =             AllocStaticArray(MapArena, line, ComponentMaxCount);
     static_array<laser> Lasers =           AllocStaticArray(MapArena, laser, ComponentMaxCount);
     
+    //TODO: I hate this
+    Add(&Lasers, {});
+    
     rigid_body PlayerRigidBody = {};
     PlayerRigidBody.P = V2(0.5f, 0.3f);
     PlayerRigidBody.Size = V2(0.025f, 0.025f);
@@ -532,8 +534,10 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
     *Player = {Entity_Player};
     Player->RigidBodyIndex = Add(&RigidBodies, PlayerRigidBody);
     
-    for (map_element& MapElem : Map->Elements)
+    for (u32 MapElementIndex = 0; MapElementIndex < Map->Elements.Count; MapElementIndex++)
     {
+        map_element MapElem = Map->Elements[MapElementIndex];
+        
         u32 RigidBodyIndex = 0;
         u32 LineIndex = 0;
         u32 LaserIndex = 0;
@@ -550,21 +554,6 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
                 RigidBody.Color = MapElem.Color;
                 
                 RigidBodyIndex = Add(&RigidBodies, RigidBody);
-                
-                /*
-                if (MapElement->AttachedTo)
-                {
-                    attachment Attachment = {};
-                    Attachment.RigidBodyIndex = RigidBodyIndex;
-                    Attachment.ElementIndex = MapElement->AttachedTo;
-                    
-                    map_element* AttachedTo = Map->Elements + MapElement->AttachedTo;
-                    Attachment.Offset = AttachedTo->Shape.Position - MapElement->Shape.Position;
-                    
-                    Attachments[AttachmentCount++] = Attachment;
-                }
-*/
-                
             } break;
             case MapElem_Circle:
             {
@@ -598,7 +587,8 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
             {
                 line Line = {};
                 Line.Color = MapElem.Color;
-                Line.LineSegment = {MapElem.Shape.Start, MapElem.Shape.Start + MapElem.Shape.Offset};
+                Line.Start = MapElem.Shape.Start;
+                Line.Offset = MapElem.Shape.Offset;
                 Line.Reflective = (MapElem.Type == MapElem_Reflector);
                 
                 LineIndex = Add(&Lines, Line);
@@ -609,18 +599,25 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
                 Laser.Color = MapElem.Color;
                 Laser.Angle = MapElem.Angle;
                 Laser.Position = MapElem.Shape.Position;
+                Laser.ActivatedByIndex = MapElem.ActivatedBy;
                 
                 LaserIndex = Add(&Lasers, Laser);
-                
-                rigid_body RigidBody = {};
-                RigidBody.P = MapElem.Shape.Position;
-                RigidBody.Size  = MapElem.Shape.Size;
-                RigidBody.InvMass = 0.0f;
-                RigidBody.Transparent = true;
-                RigidBody.Color = MapElem.Color;
-                
-                RigidBodyIndex = Add(&RigidBodies, RigidBody);
             }
+        }
+        
+        if (MapElem.AttachedTo)
+        {
+            Assert(RigidBodyIndex || LineIndex || LaserIndex);
+            
+            map_element* AttachedTo = Map->Elements + MapElem.AttachedTo;
+            v2 Offset = MapElem.Shape.Position - AttachedTo->Shape.Position;
+            
+            attachment Attachment = {};
+            Attachment.EntityIndex = MapElementIndex;
+            Attachment.AttachedToEntityIndex = MapElem.AttachedTo;
+            Attachment.Offset = Offset;
+            
+            Add(&Attachments, Attachment);
         }
         
         entity Entity = {};
@@ -647,6 +644,7 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
     Map->Attachments = Attachments;
     Map->Lines = Lines;
     Map->Lasers = Lasers;
+    Map->Attachments = Attachments;
 }
 
 static void

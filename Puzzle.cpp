@@ -62,7 +62,8 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, map_desc* Map, laser* Lase
         
         for (line Line : Map->Lines)
         {
-            ray_collision Collision = TestRayIntersection(P, Direction, Line.LineSegment);
+            line_segment LineSegment = {Line.Start, Line.Start + Line.Offset};
+            ray_collision Collision = TestRayIntersection(P, Direction, LineSegment);
             
             if (Collision.DidHit && Collision.t < tMin)
             {
@@ -113,7 +114,7 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, map_desc* Map, laser* Lase
             
             if (NearestCollisionEntityIndex)
             {
-                Map->Entities[NearestCollisionEntityIndex].Activated = true;
+                Map->Entities[NearestCollisionEntityIndex].IsActivated = true;
             }
             
             if (WillReflect)
@@ -133,10 +134,12 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, map_desc* Map, laser* Lase
         }
     }
     
-    if (!Done && Iter == MaxIter)
+    if (!Done && Iter < MaxIter)
     {
-        laser_beam* LastLaserBeam = &Result[MaxIter - 1];
-        LastLaserBeam->End = P + 10.0f * UnitV(Direction);
+        laser_beam* LaserBeam = &Result[Iter];
+        LaserBeam->Start = P;
+        LaserBeam->End = P + 10.0f * UnitV(Direction);
+        LaserBeam->Color = Laser->Color;
     }
 }
 
@@ -191,11 +194,17 @@ SimulateGame(game_state* GameState, game_input* Input, f32 DeltaTime, memory_are
 {
     v2 Movement = Input->Movement;
     
+    for (entity& Entity : GameState->Map->Entities)
+    {
+        Entity.WasActivated = Entity.IsActivated;
+        Entity.IsActivated = false;
+    }
+    
     for (rigid_body& RigidBody : GameState->Map->RigidBodies)
     {
         if (RigidBody.ActivatedByIndex)
         {
-            bool Activated = GameState->Map->Entities[RigidBody.ActivatedByIndex].Activated;
+            bool Activated = GameState->Map->Entities[RigidBody.ActivatedByIndex].WasActivated;
             
             v2 TargetP, TargetSize;
             if (Activated)
@@ -229,15 +238,31 @@ SimulateGame(game_state* GameState, game_input* Input, f32 DeltaTime, memory_are
     
     for (attachment Attachment : GameState->Map->Attachments)
     {
-        rigid_body* RigidBody = GameState->Map->RigidBodies + Attachment.RigidBodyIndex;
-        map_element* MapElement = GameState->Map->Elements + Attachment.ElementIndex;
+        Assert(Attachment.EntityIndex);
+        Assert(Attachment.AttachedToEntityIndex);
         
-        MapElement->Shape.Position = RigidBody->P + Attachment.Offset;
-    }
-    
-    for (entity& Entity : GameState->Map->Entities)
-    {
-        Entity.Activated = false;
+        entity* Entity = GameState->Map->Entities + Attachment.EntityIndex;
+        entity* AttachedTo = GameState->Map->Entities + Attachment.AttachedToEntityIndex;
+        
+        Assert(AttachedTo->RigidBodyIndex);
+        rigid_body* AttachedToRigidBody = GameState->Map->RigidBodies + AttachedTo->RigidBodyIndex;
+        v2 P = AttachedToRigidBody->P + Attachment.Offset;
+        
+        if (Entity->RigidBodyIndex)
+        {
+            rigid_body* RigidBody = GameState->Map->RigidBodies + Entity->RigidBodyIndex;
+            RigidBody->P = P;
+        }
+        if (Entity->LineIndex)
+        {
+            line* Line = GameState->Map->Lines + Entity->LineIndex;
+            Line->Start = P;
+        }
+        if (Entity->LaserIndex)
+        {
+            laser* Laser = GameState->Map->Lasers + Entity->LaserIndex;
+            Laser->Position = P;
+        }
     }
     
     /*
@@ -331,13 +356,15 @@ static void DrawMap(map_desc* Map)
     
     for (line Line : Map->Lines)
     {
-        PlatformLine(Line.LineSegment.Start, Line.LineSegment.End, Line.Color, 0.01f);
+        PlatformLine(Line.Start, Line.Start + Line.Offset, Line.Color, 0.01f);
     }
     
     for (laser& Laser : Map->Lasers)
     {
-        //TODO: Check if activated
-        bool IsActive = true; //(MapElement.ActivatedByIndex == 0) || GameState->Map->Entities[MapElement.].WasActivated;
+        v2 LaserSize = V2(0.01f, 0.01f);
+        PlatformRectangle(Laser.Position - 0.5f * LaserSize, LaserSize, Laser.Color);
+        
+        bool IsActive = (Laser.ActivatedByIndex == 0) || Map->Entities[Laser.ActivatedByIndex].WasActivated;
         if (IsActive)
         {
             laser_beam LaserBeams[10] = {};

@@ -88,18 +88,19 @@ enum entity_type
 struct entity
 {
     entity_type Type;
-    bool Activated;
+    
+    bool WasActivated;
+    bool IsActivated;
     
     u32 RigidBodyIndex;
-    u32 AttachmentIndex;
     u32 LineIndex;
     u32 LaserIndex;
 };
 
 struct attachment
 {
-    u32 RigidBodyIndex;
-    u32 ElementIndex;
+    u32 EntityIndex;
+    u32 AttachedToEntityIndex;
     v2 Offset;
 };
 
@@ -108,7 +109,8 @@ struct line
     u32 EntityIndex;
     
     u32 Color;
-    line_segment LineSegment;
+    v2 Start;
+    v2 Offset;
     bool Reflective;
 };
 

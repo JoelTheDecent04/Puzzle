@@ -25,7 +25,7 @@ RunCommand(int ArgCount, string* Args, game_state* GameState, memory_arena* TAre
         
         if (EntityIndex < GameState->Map->Entities.Count)
         {
-            bool Activated = GameState->Map->Entities[EntityIndex].Activated;
+            bool Activated = GameState->Map->Entities[EntityIndex].WasActivated;
             Result = ArenaPrint(TArena, "%u activated: %u", EntityIndex, Activated);
         }
         else
