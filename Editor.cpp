@@ -190,7 +190,7 @@ RunEditor(render_group* Group, game_state* GameState, game_input* Input, allocat
         Box.MinCorner -= Gap;
         Box.MaxCorner += Gap;
         
-        PushRectangleOutline(Group, Box, 0xFFFF0000);
+        PushRectangleOutline(Group, Box, 0xFFFF0000, 0.003f);
         
         if (Editor->Dragging)
         {

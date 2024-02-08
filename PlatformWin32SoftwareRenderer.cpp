@@ -2,59 +2,50 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
-#define DEBUG 1
-
 #include "Utilities.cpp"
 #include "Maths.cpp"
 
 #include "Puzzle.h"
 
-//Platform functions
+memory_arena GlobalDebugArena;
+#define LOG(...) \
+OutputDebugStringA(ArenaPrint(&GlobalDebugArena, __VA_ARGS__).Text); \
+OutputDebugStringA("\n")
+
+struct back_buffer
+{
+    int Width, Height;
+    u32* Pixels;
+};
+
 void Win32DrawTexture(int Identifier, int Index, v2 Position, v2 Size, float Angle);
 void Win32Rectangle(v2 Position, v2 Dimensions, u32 FillColour, u32 BorderColour = 0);
 void Win32Circle(v2 Position, f32 Radius, u32 Color);
 void Win32Line(v2 Start_, v2 End_, u32 Colour, f32 Thickness);
 void Win32DrawText(string String, v2 Position, v2 Size, u32 Color = 0xFF808080, bool Centered = false);
+memory_arena Win32CreateMemoryArena(u64 Size, memory_arena_type Type);
+std::string GlobalTextInput;
+LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
+void KeyboardAndMouseInputState(input_state* InputState, HWND Window);
+void SoftwareRender(render_group* RenderGroup, back_buffer BackBuffer);
+//f32 DrawString(v2 Position, string String, f32 Height);
+
+
+//Platform functions
 void Win32DebugOut(string String);
 void Win32Sleep(int Milliseconds);
-memory_arena Win32CreateMemoryArena(u64 Size, memory_arena_type Type);
 span<u8> Win32LoadFile(memory_arena* Arena, char* Path);
 void Win32SaveFile(char* Path, span<u8> Data);
+f32 Win32TextWidth(string String, f32 FontSize);
 
-#define PlatformDrawTexture Win32DrawTexture
-#define PlatformRectangle Win32Rectangle
-#define PlatformCircle Win32Circle
-#define PlatformLine Win32Line
-#define PlatformDrawText Win32DrawText
 #define PlatformDebugOut Win32DebugOut
 #define PlatformSleep Win32Sleep
 #define PlatformLoadFile Win32LoadFile
 #define PlatformSaveFile Win32SaveFile
+#define PlatformTextWidth Win32TextWidth
 
-f32 DrawString(v2 Position, string String, f32 Height);
-
-//TODO: Fix
-static inline void 
-Win32Rectangle(rect Rect, u32 FillColor, u32 BorderColor = 0)
-{
-	Win32Rectangle(Rect.MinCorner, Rect.MaxCorner - Rect.MinCorner, FillColor, BorderColor);
-}
-
-memory_arena GlobalDebugArena;
-
-#include "GUI.cpp"
 #include "Puzzle.cpp"
 
-#define LOG(...) \
-OutputDebugStringA(ArenaPrint(&GlobalDebugArena, __VA_ARGS__).Text); \
-OutputDebugStringA("\n")
-
-std::string GlobalTextInput;
-LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
-void KeyboardAndMouseInputState(input_state* InputState, HWND Window);
-
-int BufferWidth = 1280, BufferHeight = 720;
-u32* GlobalBackBuffer;
 
 int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowCode)
 {
@@ -70,6 +61,8 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 		return -1;
 	}
 	
+    int BufferWidth = 1280, BufferHeight = 720;
+    
 	RECT ClientRect = { 0, 0, BufferWidth, BufferHeight };
 	AdjustWindowRect(&ClientRect, WS_OVERLAPPEDWINDOW, FALSE);
 	
@@ -91,9 +84,13 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
     
     HDC WindowDC = GetDC(Window);
     
-    void* Bits = 0;
-    HBITMAP Bitmap = CreateDIBSection(WindowDC, &BitmapInfo,DIB_RGB_COLORS, &Bits, 0, 0);
-    GlobalBackBuffer = (u32*)Bits;
+    void* Pixels;
+    HBITMAP Bitmap = CreateDIBSection(WindowDC, &BitmapInfo,DIB_RGB_COLORS, &Pixels, 0, 0);
+    
+    back_buffer BackBuffer = {};
+    BackBuffer.Width = BufferWidth;
+    BackBuffer.Height = BufferHeight;
+    BackBuffer.Pixels = (u32*)Pixels;
     
 	memory_arena TransientArena = Win32CreateMemoryArena(Megabytes(16), TRANSIENT);
 	memory_arena PermanentArena = Win32CreateMemoryArena(Megabytes(16), PERMANENT);
@@ -115,6 +112,9 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 	int CountsPerFrame = (int)(CounterFrequency.QuadPart / TargetFrameRate);
     
 	game_input PreviousInput = {};
+    
+    render_group RenderGroup;
+    RenderGroup.ShapeCount = 0;
     
 	while (true)
 	{
@@ -153,14 +153,17 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
         Input.TextInput = (char*)GlobalTextInput.c_str();
         PreviousInput = Input;
         
-        GameUpdateAndRender(GameState, SecondsPerFrame, &Input, Allocator);
+        GameUpdateAndRender(&RenderGroup, GameState, SecondsPerFrame, &Input, Allocator);
         
         ResetArena(&TransientArena);
+        
+        SoftwareRender(&RenderGroup, BackBuffer);
+        RenderGroup.ShapeCount = 0;
         
         StretchDIBits(WindowDC, 
                       0, 0, ClientRect.right, ClientRect.bottom,
                       0, 0, BufferWidth, BufferHeight,
-                      Bits, &BitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+                      Pixels, &BitmapInfo, DIB_RGB_COLORS, SRCCOPY);
         
         LARGE_INTEGER PerformanceCount;
         QueryPerformanceCounter(&PerformanceCount);
@@ -267,6 +270,7 @@ void Win32DrawTexture(int Identifier, int Index, v2 Position, v2 Size, float Ang
 {
 }
 
+#if 0
 static void
 DrawRotatedRectangle(v2 Origin, v2 XAxis, v2 YAxis, u32 Color)
 {
@@ -309,65 +313,7 @@ DrawRotatedRectangle(v2 Origin, v2 XAxis, v2 YAxis, u32 Color)
         }
     }
 }
-
-void Win32Rectangle(v2 Position, v2 Size, uint32_t Color, uint32_t BorderColour)
-{
-    f32 X0 = Position.X * BufferWidth;
-    f32 X1 = (Position.X + Size.X) * BufferWidth;
-    f32 Y0 = Position.Y * BufferWidth;
-    f32 Y1 = (Position.Y + Size.Y) * BufferWidth;
-    
-    int PixelX0 = Clamp(Floor(X0), 0, BufferWidth - 1);
-    int PixelX1 = Clamp(Floor(X1) , 0, BufferWidth - 1);
-    int PixelY0 = Clamp(Floor(Y0), 0, BufferHeight - 1);
-    int PixelY1 = Clamp(Floor(Y1) , 0, BufferHeight - 1);
-    
-    f32 Alpha = (float)(Color >> 24) / 255.0f;
-    
-    u8 R = Color >> 16;
-    u8 G = Color >> 8;
-    u8 B = Color;
-    
-    for (i32 Y = PixelY0; Y <= PixelY1; Y++)
-    {
-        f32 YSubpixelAlpha = 1.0f;
-        if (Y == PixelY0)
-        {
-            YSubpixelAlpha = 1.0f - (Y0 - (f32)Y);
-        }
-        if (Y == PixelY1)
-        {
-            YSubpixelAlpha = (Y1 - (f32)Y);
-        }
-        
-        u32* Row = GlobalBackBuffer + Y * BufferWidth;
-        for (i32 X = PixelX0; X <= PixelX1; X++)
-        {
-            f32 XSubpixelAlpha = 1.0f;
-            if (X == PixelX0)
-            {
-                XSubpixelAlpha = 1.0f - (X0 - (f32)X);
-            }
-            if (X == PixelX1)
-            {
-                XSubpixelAlpha = (X1 - (f32)X);
-            }
-            
-            f32 PixelA = XSubpixelAlpha * YSubpixelAlpha * Alpha;
-            
-            u32 OldRGB = Row[X];
-            u8 OldR = OldRGB >> 16;
-            u8 OldG = OldRGB >> 8;
-            u8 OldB = OldRGB;
-            
-            u8 NewR = (u8)((1.0f - PixelA) * OldR) + (u8)(PixelA * R);
-            u8 NewG = (u8)((1.0f - PixelA) * OldG) + (u8)(PixelA * G);
-            u8 NewB = (u8)((1.0f - PixelA) * OldB) + (u8)(PixelA * B);
-            
-            Row[X] = (NewR << 16) | (NewG << 8) | NewB;
-        }
-    }
-}
+#endif
 
 void Win32Line(v2 Start, v2 End, u32 Color, f32 Thickness)
 {
@@ -388,7 +334,7 @@ void Win32Line(v2 Start, v2 End, u32 Color, f32 Thickness)
             SectionLength = LineLength - Section;
         }
         
-        DrawRotatedRectangle(Origin, SectionLength * UnitV(XAxis), YAxis, Color);
+        //DrawRotatedRectangle(Origin, SectionLength * UnitV(XAxis), YAxis, Color);
         
         Origin += SectionLength * UnitV(XAxis);
         Section += StepLength;
@@ -510,7 +456,102 @@ f32 DrawString(v2 Position, string String, f32 Height)
     return 0.0f;
 }
 
-void Win32Circle(v2 Position, f32 Radius, u32 Color)
+void Win32Rectangle(back_buffer Buffer, v2 Position, v2 Size, uint32_t Color)
+{
+    f32 X0 = Position.X * Buffer.Width;
+    f32 X1 = (Position.X + Size.X) * Buffer.Width;
+    f32 Y0 = Position.Y * Buffer.Width;
+    f32 Y1 = (Position.Y + Size.Y) * Buffer.Width;
+    
+    int PixelX0 = Clamp(Floor(X0), 0, Buffer.Width - 1);
+    int PixelX1 = Clamp(Floor(X1) , 0, Buffer.Width - 1);
+    int PixelY0 = Clamp(Floor(Y0), 0, Buffer.Height - 1);
+    int PixelY1 = Clamp(Floor(Y1) , 0, Buffer.Height - 1);
+    
+    f32 Alpha = (float)(Color >> 24) / 255.0f;
+    
+    u8 R = Color >> 16;
+    u8 G = Color >> 8;
+    u8 B = Color;
+    
+    for (i32 Y = PixelY0; Y <= PixelY1; Y++)
+    {
+        f32 YSubpixelAlpha = 1.0f;
+        if (Y == PixelY0)
+        {
+            YSubpixelAlpha = 1.0f - (Y0 - (f32)Y);
+        }
+        if (Y == PixelY1)
+        {
+            YSubpixelAlpha = (Y1 - (f32)Y);
+        }
+        
+        u32* Row = Buffer.Pixels + Y * Buffer.Width;
+        for (i32 X = PixelX0; X <= PixelX1; X++)
+        {
+            f32 XSubpixelAlpha = 1.0f;
+            if (X == PixelX0)
+            {
+                XSubpixelAlpha = 1.0f - (X0 - (f32)X);
+            }
+            if (X == PixelX1)
+            {
+                XSubpixelAlpha = (X1 - (f32)X);
+            }
+            
+            f32 PixelA = XSubpixelAlpha * YSubpixelAlpha * Alpha;
+            
+            u32 OldRGB = Row[X];
+            u8 OldR = OldRGB >> 16;
+            u8 OldG = OldRGB >> 8;
+            u8 OldB = OldRGB;
+            
+            u8 NewR = (u8)((1.0f - PixelA) * OldR) + (u8)(PixelA * R);
+            u8 NewG = (u8)((1.0f - PixelA) * OldG) + (u8)(PixelA * G);
+            u8 NewB = (u8)((1.0f - PixelA) * OldB) + (u8)(PixelA * B);
+            
+            Row[X] = (NewR << 16) | (NewG << 8) | NewB;
+        }
+    }
+}
+
+void Win32Circle(back_buffer Buffer, v2 Position, f32 Radius, u32 Color)
 {
     LOG("Circle\n");
+}
+
+void SoftwareRender(render_group* RenderGroup, back_buffer Buffer)
+{
+    for (u32 ShapeIndex = 0; ShapeIndex < RenderGroup->ShapeCount; ShapeIndex++)
+    {
+        render_shape Shape = RenderGroup->Shapes[ShapeIndex];
+        switch (Shape.Type)
+        {
+            case Render_Rectangle:
+            {
+                Win32Rectangle(Buffer, Shape.Rectangle.Position, Shape.Rectangle.Size, Shape.Color);
+            } break;
+            
+            case Render_Circle:
+            {
+                Win32Circle(Buffer, Shape.Circle.Position, Shape.Circle.Radius, Shape.Color);
+            } break;
+            
+            case Render_Line:
+            {
+                
+            } break;
+            
+            case Render_Text:
+            {
+            } break;
+            
+            default: Assert(0);
+        }
+    }
+}
+
+f32 Win32TextWidth(string String, f32 FontSize)
+{
+    return 0.0f;
 }

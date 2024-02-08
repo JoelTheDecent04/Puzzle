@@ -214,11 +214,10 @@ DrawConsole(console* Console, render_group* RenderGroup)
     PushRectangle(RenderGroup, V2(X0, Y0), V2(Width, InputTextHeight), 0xFF000000);
     
     string InputA = {Console->Input, (u32)Console->InputCursor};
-    string InputB = {Console->Input + Console->InputCursor, (u32)(Console->InputLength - Console->InputCursor)};
     
     f32 Pad = 0.002f;
     X0 += Pad;
-    f32 WidthA = DrawString(V2(X0, Y0), InputA, InputTextHeight);
+    f32 WidthA = PlatformTextWidth(InputA, InputTextHeight);
     
     //Draw cursor
     if (Console->CursorOn)
@@ -229,11 +228,12 @@ DrawConsole(console* Console, render_group* RenderGroup)
                       0xFFFFFFFF);
     }
     
-    DrawString(V2(X0 + WidthA, Y0), InputB, InputTextHeight);
+    string Input = {Console->Input, (u32)Console->InputLength};
+    PushText(RenderGroup, Input, V2(X0, Y0), InputTextHeight);
     
     for (string History : Console->History)
     {
         Y0 += InputTextHeight + Pad;
-        DrawString(V2(X0, Y0), History, InputTextHeight);
+        PushText(RenderGroup, History, V2(X0, Y0), InputTextHeight);
     }
 }
