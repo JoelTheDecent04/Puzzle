@@ -217,3 +217,49 @@ struct game_input
     v2 Movement;
 	v2 Cursor;
 };
+
+enum render_type
+{
+    Render_Rectangle,
+    Render_Circle,
+    Render_Line,
+    Render_Text
+};
+
+struct render_shape
+{
+    render_type Type;
+    u32 Color;
+    union
+    {
+        struct
+        {
+            v2 Position;
+            v2 Size;
+        } Rectangle;
+        struct
+        {
+            v2 Position;
+            f32 Radius;
+        } Circle;
+        struct 
+        {
+            v2 Start;
+            v2 End;
+            f32 Thickness;
+        } Line;
+        struct
+        {
+            v2 Position;
+            f32 Size;
+            string String;
+        } Text;
+    };
+};
+
+struct render_group
+{
+    u32 ShapeCount;
+    render_shape Shapes[1024];
+};
+

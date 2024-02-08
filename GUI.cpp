@@ -12,9 +12,10 @@ struct gui_state
 
 gui_state GlobalGUIState;
 u32 GlobalGUIIdentifierCounter;
+render_group* GlobalRenderGroup;
 
 static void
-BeginGUI(game_input* Input)
+BeginGUI(game_input* Input, render_group* RenderGroup)
 {
 	//Check if buttons no longer exist
 	if (GlobalGUIState.Hot >= GlobalGUIIdentifierCounter)
@@ -28,6 +29,8 @@ BeginGUI(game_input* Input)
 	GlobalGUIState.InputHandled = false;
     
 	GlobalGUIIdentifierCounter = 1;
+    
+    GlobalRenderGroup = RenderGroup;
 }
 
 static inline bool
@@ -80,8 +83,10 @@ Button(v2 Position, v2 Size, string String)
 		Color = 0xFF6060FF;
 	}
     
-	PlatformRectangle(Position, Size, Color, 0xFF8080FF);
-	PlatformDrawText(String, Position, Size, 0xFFFFFFFF, true);
+	PushRectangle(GlobalRenderGroup, Position, Size, Color /*, 0xFF8080FF*/);
+    
+    f32 TextWidth = PlatformTextWidth(String, Size.Y);
+	PushText(GlobalRenderGroup, String, V2(Position.X + 0.5f * Size.X - 0.5f * TextWidth, Position.Y), Size.Y);
     
 	return Result;
 }
@@ -134,7 +139,8 @@ void gui_layout::Label(const char* Text)
 void gui_layout::Label(string Text)
 {
 	f32 Width = 0.14f;
-	PlatformDrawText(Text, V2(X, Y), V2(Width, 0.02f), 0xFFFFFFFF);
+    
+	PushText(GlobalRenderGroup, Text, V2(X, Y), 0.02f);
 	X += Width + XPad;
 }
 

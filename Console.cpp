@@ -198,7 +198,7 @@ UpdateConsole(game_state* GameState, console* Console, game_input* Input, memory
     }
 }
 static void
-DrawConsole(console* Console)
+DrawConsole(console* Console, render_group* RenderGroup)
 {
     f32 ScreenTop = 0.5625;
     
@@ -210,8 +210,8 @@ DrawConsole(console* Console)
     f32 Y0 = ScreenTop - Console->Height;
     f32 Width = X1 - X0;
     
-    PlatformRectangle(V2(X0, Y0 + InputTextHeight), V2(Width, Console->Height), 0xC0000000);
-    PlatformRectangle(V2(X0, Y0), V2(Width, InputTextHeight), 0xFF000000);
+    PushRectangle(RenderGroup, V2(X0, Y0 + InputTextHeight), V2(Width, Console->Height), 0xC0000000);
+    PushRectangle(RenderGroup, V2(X0, Y0), V2(Width, InputTextHeight), 0xFF000000);
     
     string InputA = {Console->Input, (u32)Console->InputCursor};
     string InputB = {Console->Input + Console->InputCursor, (u32)(Console->InputLength - Console->InputCursor)};
@@ -223,9 +223,10 @@ DrawConsole(console* Console)
     //Draw cursor
     if (Console->CursorOn)
     {
-        PlatformRectangle(V2(X0 + WidthA, Y0 + Pad), 
-                          V2(Pad, InputTextHeight - 2.0f * Pad),
-                          0xFFFFFFFF);
+        PushRectangle(RenderGroup, 
+                      V2(X0 + WidthA, Y0 + Pad), 
+                      V2(Pad, InputTextHeight - 2.0f * Pad),
+                      0xFFFFFFFF);
     }
     
     DrawString(V2(X0 + WidthA, Y0), InputB, InputTextHeight);

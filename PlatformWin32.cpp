@@ -29,39 +29,38 @@ memory_arena GlobalDebugArena;
 #define LOG(...) \
 OutputDebugStringA(ArenaPrint(&GlobalDebugArena, __VA_ARGS__).Text)
 
-//Platform functions
-void Win32DrawTexture(int Identifier, int Index, v2 Position, v2 Size, float Angle);
 void Win32Rectangle(v2 Position, v2 Dimensions, u32 FillColour, u32 BorderColour = 0);
 void Win32Circle(v2 Position, f32 Radius, u32 Color);
 void Win32Line(v2 Start_, v2 End_, u32 Colour, f32 Thickness);
 void Win32DrawText(string String, v2 Position, v2 Size, u32 Color = 0xFF808080, bool Centered = false);
+memory_arena Win32CreateMemoryArena(u64 Size, memory_arena_type Type);
+f32 DrawString(v2 Position, string String, f32 Size);
+void DrawBitmap(rect Destination, rect Source, ID2D1Bitmap1* Bitmap);
+ID2D1Bitmap1* Win32LoadBitmap(char* Path, memory_arena* Arena);
+ID2D1Bitmap1* Win32LoadFont(char* Path, memory_arena* Arena);
+void ToggleFullscreen(HWND Window);
+void KeyboardAndMouseInputState(input_state* InputState, HWND Window);
+void Direct2DRender(render_group* RenderGroup);
+
+#if USE_GAME_INPUT_API
+void ControllerState(input_state* InputState, IGameInput* GameInput);
+#endif
+
+LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
+
+//Platform functions
 void Win32DebugOut(string String);
 void Win32Sleep(int Milliseconds);
-memory_arena Win32CreateMemoryArena(u64 Size, memory_arena_type Type);
 span<u8> Win32LoadFile(memory_arena* Arena, char* Path);
 void Win32SaveFile(char* Path, span<u8> Data);
+f32 Win32TextWidth(string String, f32 FontSize);
 
-#define PlatformDrawTexture Win32DrawTexture
-#define PlatformRectangle   Win32Rectangle
-#define PlatformCircle      Win32Circle
-#define PlatformLine        Win32Line
-#define PlatformDrawText    Win32DrawText
 #define PlatformDebugOut    Win32DebugOut
 #define PlatformSleep       Win32Sleep
 #define PlatformLoadFile    Win32LoadFile
 #define PlatformSaveFile    Win32SaveFile
+#define PlatformTextWidth   Win32TextWidth
 
-//TODO: Make into a platform function or combine with PlatformDrawText()
-f32 DrawString(v2 Position, string String, f32 Size);
-
-//TODO: Fix
-static inline void 
-Win32Rectangle(rect Rect, u32 FillColor, u32 BorderColor = 0)
-{
-	Win32Rectangle(Rect.MinCorner, Rect.MaxCorner - Rect.MinCorner, FillColor, BorderColor);
-}
-
-#include "GUI.cpp"
 #include "Puzzle.cpp"
 
 struct win32_d2d_screen_buffer
@@ -88,23 +87,6 @@ d2d_texture	GlobalTextures[ 1 ];
 win32_d2d_screen_buffer	GlobalScreen;
 
 std::string GlobalTextInput;
-
-void ToggleFullscreen(HWND Window);
-//int LoadTextures(texture_info* Requests, int Count, d2d_texture* Textures);
-ID2D1Bitmap1* Win32LoadBitmap(char* Path, memory_arena* Arena);
-void DrawBitmap(rect Destination, rect Source, ID2D1Bitmap1* Bitmap);
-ID2D1Bitmap1* Win32LoadFont(char* Path, memory_arena* Arena);
-
-void DrawString(v2 Position, string String);
-
-
-void KeyboardAndMouseInputState(input_state* InputState, HWND Window);
-
-#if USE_GAME_INPUT_API
-void ControllerState(input_state* InputState, IGameInput* GameInput);
-#endif
-
-LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
 
 int BufferWidth = 1280, BufferHeight = 720;
 
@@ -262,6 +244,9 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
     
     ID2D1Bitmap1* Bitmap = Win32LoadFont("assets/TitilliumWeb-Regular.ttf", &TransientArena);
     
+    render_group RenderGroup;
+    RenderGroup.ShapeCount = 0;
+    
     while (true)
 	{
 		LARGE_INTEGER StartCount;
@@ -307,8 +292,11 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
         
         GlobalScreen.D2DDeviceContext->Clear(D2D1::ColorF(0));
         
-        GameUpdateAndRender(GameState, SecondsPerFrame, &Input, Allocator);
+        GameUpdateAndRender(&RenderGroup, GameState, SecondsPerFrame, &Input, Allocator);
         ResetArena(&TransientArena);
+        
+        Direct2DRender(&RenderGroup);
+        RenderGroup.ShapeCount = 0;
         
         GlobalScreen.D2DDeviceContext->EndDraw();
         GlobalScreen.SwapChain->Present(0, 0);
@@ -467,6 +455,35 @@ ControllerState(input_state* InputState, IGameInput* GameInput)
 }
 #endif
 
+void Direct2DRender(render_group* RenderGroup)
+{
+    for (u32 ShapeIndex = 0; ShapeIndex < RenderGroup->ShapeCount; ShapeIndex++)
+    {
+        render_shape Shape = RenderGroup->Shapes[ShapeIndex];
+        
+        switch (Shape.Type)
+        {
+            case Render_Rectangle:
+            {
+                Win32Rectangle(Shape.Rectangle.Position, Shape.Rectangle.Size, Shape.Color);
+            } break;
+            case Render_Circle:
+            {
+                Win32Circle(Shape.Circle.Position, Shape.Circle.Radius, Shape.Color);
+            } break;
+            case Render_Line:
+            {
+                Win32Line(Shape.Line.Start, Shape.Line.End, Shape.Color, Shape.Line.Thickness);
+            } break;
+            case Render_Text:
+            {
+                DrawString(Shape.Text.Position, Shape.Text.String, Shape.Text.Size);
+            } break;
+            default: Assert(0);
+        }
+    }
+}
+
 void ToggleFullscreen(HWND Window)
 {
 	static WINDOWPLACEMENT PreviousWindowPlacement = { sizeof(PreviousWindowPlacement) };
@@ -596,6 +613,21 @@ Win32LoadFont(char* Path, memory_arena* Arena)
 }
 
 static f32
+Win32TextWidth(string String, f32 FontSize)
+{
+    f32 Scale = FontSize / 60.0f;
+    f32 Result = 0.0f;
+    for (u32 I = 0; I < String.Length; I++)
+    {
+        u8 C = (u8)String.Text[I];
+        
+        Assert(C < 128);
+        Result += Scale * FontBakedChars[C].xadvance;
+    }
+    return Result;
+}
+
+static f32
 DrawString(v2 Position, string String, f32 Size)
 {
     f32 Scale = Size / 60.0f;
@@ -626,65 +658,6 @@ DrawString(v2 Position, string String, f32 Size)
     f32 Width = Position.X - StartX;
     return Width;
 }
-
-#if 0
-int LoadTextures(texture_info* Requests, int Count, d2d_texture* Textures)
-{
-    int TexturesLoaded = 0;
-    
-    IWICImagingFactory* WicFactory = 0;
-    HRESULT Result = CoCreateInstance(CLSID_WICImagingFactory, 0, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, (LPVOID*)&WicFactory);
-    
-    if (WicFactory)
-    {
-        for (int i = 0; i < Count; i++)
-        {
-            texture_info Request = Requests[i];
-            d2d_texture* Texture = Textures + Request.Identifier;
-            
-            Texture->Width = Request.Width;
-            Texture->Height = Request.Height;
-            
-            wchar_t FilenameWide[MAX_PATH];
-            if (MultiByteToWideChar(CP_UTF8, MB_PRECOMPOSED, Request.Filename, -1, FilenameWide, ArrayLength(FilenameWide)))
-            {
-                IWICBitmapDecoder* WicDecoder = 0;
-                WicFactory->CreateDecoderFromFilename(FilenameWide, 0, GENERIC_READ, WICDecodeMetadataCacheOnLoad, &WicDecoder);
-                
-                if (WicDecoder)
-                {
-                    IWICBitmapFrameDecode* WicFrame = 0;
-                    WicDecoder->GetFrame(0, &WicFrame);
-                    
-                    if (WicFrame)
-                    {
-                        IWICFormatConverter* WicConverter = 0;
-                        WicFactory->CreateFormatConverter(&WicConverter);
-                        
-                        if (WicConverter)
-                        {
-                            WicConverter->Initialize(WicFrame, GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, 0, 0.0, WICBitmapPaletteTypeCustom);
-                            
-                            GlobalScreen.D2DDeviceContext->CreateBitmapFromWicBitmap(WicConverter, 0, &Texture->Bitmap);
-                            WicConverter->Release();
-                        }
-                        WicFrame->Release();
-                    }
-                    WicDecoder->Release();
-                }
-            }
-            else
-            {
-                //Could not convert
-                OutputDebugStringA("Could not convert filename to wide characters\n");
-            }
-        }
-        WicFactory->Release();
-    }
-    
-    return TexturesLoaded;
-}
-#endif
 
 void Win32DrawTexture(int Identifier, int Index, v2 Position, v2 Size, float Angle)
 {

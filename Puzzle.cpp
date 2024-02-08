@@ -1,6 +1,8 @@
 //Bugs
 //if modifications are made to the level and the file is reloaded, nothing can be selected
 
+#include "Graphics.cpp"
+#include "GUI.cpp"
 #include "Editor.cpp"
 #include "Physics.cpp"
 #include "Console.cpp"
@@ -290,7 +292,7 @@ SimulateGame(game_state* GameState, game_input* Input, f32 DeltaTime, memory_are
 */
 }
 
-static void DrawMapForEditor(map_desc* Map)
+static void DrawMapForEditor(render_group* Group, map_desc* Map)
 {
     for (map_element& MapElement : Map->Elements)
     {
@@ -298,37 +300,37 @@ static void DrawMapForEditor(map_desc* Map)
         {
             case MapElem_Line: case MapElem_Reflector:
             {
-                PlatformLine(MapElement.Shape.Start, MapElement.Shape.Start + MapElement.Shape.Offset, MapElement.Color, 0.01f);
+                PushLine(Group, MapElement.Shape.Start, MapElement.Shape.Start + MapElement.Shape.Offset, MapElement.Color, 0.01f);
             } break;
             case MapElem_Rectangle: 
             {
                 v2 MinCorner = MapElement.Shape.Position - 0.5f * MapElement.Shape.Size;
                 v2 MaxCorner = MapElement.Shape.Position + 0.5f * MapElement.Shape.Size;
                 
-                PlatformRectangle(MinCorner, MapElement.Shape.Size, MapElement.Color);
+                PushRectangle(Group, MinCorner, MapElement.Shape.Size, MapElement.Color);
                 
                 u32 RectStripeColor = 0x20000000;
                 for (f32 X = MinCorner.X; X <= MaxCorner.X + 0.001f; X += 0.04f)
                 {
-                    PlatformLine(V2(X, MinCorner.Y), V2(X, MaxCorner.Y), RectStripeColor, 0.002f);
+                    PushLine(Group, V2(X, MinCorner.Y), V2(X, MaxCorner.Y), RectStripeColor, 0.002f);
                 }
                 for (f32 Y = MinCorner.Y; Y <= MaxCorner.Y + 0.001f; Y += 0.04f)
                 {
-                    PlatformLine(V2(MinCorner.X, Y), V2(MaxCorner.X, Y), RectStripeColor, 0.002f);
+                    PushLine(Group, V2(MinCorner.X, Y), V2(MaxCorner.X, Y), RectStripeColor, 0.002f);
                 }
             } break;
             case MapElem_Receiver: case MapElem_Laser: case MapElem_Goal:
             {
-                PlatformRectangle(MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, MapElement.Color);
+                PushRectangle(Group, MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, MapElement.Color);
             } break;
             case MapElem_Box:
             {
-                PlatformRectangle(MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, 0xFFFF0000);
+                PushRectangle(Group, MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, 0xFFFF0000);
             } break;
             case MapElem_Circle:
             {
                 
-                PlatformCircle(MapElement.Shape.Position, 0.5f * MapElement.Shape.Size.X, 0xFFFF0000);
+                PushCircle(Group, MapElement.Shape.Position, 0.5f * MapElement.Shape.Size.X, 0xFFFF0000);
             }
             case MapElem_Window:
             break; //Drawn later in transparent section
@@ -342,27 +344,27 @@ static void DrawMapForEditor(map_desc* Map)
     {
         if (MapElement.Type == MapElem_Window)
         {
-            PlatformRectangle(MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, MapElement.Color);
+            PushRectangle(Group, MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, MapElement.Color);
         }
     }
 }
 
-static void DrawMap(map_desc* Map)
+static void DrawMap(render_group* Group, map_desc* Map)
 {
     for (rigid_body RigidBody : Map->RigidBodies)
     {
-        PlatformRectangle(RectOf(RigidBody), RigidBody.Color);
+        PushRectangle(Group, RectOf(RigidBody), RigidBody.Color);
     }
     
     for (line Line : Map->Lines)
     {
-        PlatformLine(Line.Start, Line.Start + Line.Offset, Line.Color, 0.01f);
+        PushLine(Group, Line.Start, Line.Start + Line.Offset, Line.Color, 0.01f);
     }
     
     for (laser& Laser : Map->Lasers)
     {
         v2 LaserSize = V2(0.01f, 0.01f);
-        PlatformRectangle(Laser.Position - 0.5f * LaserSize, LaserSize, Laser.Color);
+        PushRectangle(Group, Laser.Position - 0.5f * LaserSize, LaserSize, Laser.Color);
         
         bool IsActive = (Laser.ActivatedByIndex == 0) || Map->Entities[Laser.ActivatedByIndex].WasActivated;
         if (IsActive)
@@ -377,12 +379,12 @@ static void DrawMap(map_desc* Map)
                 
                 v2 Direction = UnitV(LaserBeam.End - LaserBeam.Start);
                 
-                PlatformLine(LaserBeam.Start, LaserBeam.End, RGB | 0x40000000, 0.008f);
-                PlatformLine(LaserBeam.Start, LaserBeam.End, RGB | 0x80000000, 0.005f);
-                PlatformLine(LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
-                             RGB | 0xC0000000, 0.0025f);
-                PlatformLine(LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
-                             RGB | 0xFF000000, 0.001f);
+                PushLine(Group, LaserBeam.Start, LaserBeam.End, RGB | 0x40000000, 0.008f);
+                PushLine(Group, LaserBeam.Start, LaserBeam.End, RGB | 0x80000000, 0.005f);
+                PushLine(Group, LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
+                         RGB | 0xC0000000, 0.0025f);
+                PushLine(Group, LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
+                         RGB | 0xFF000000, 0.001f);
             }
         }
     }
@@ -392,39 +394,39 @@ static void DrawMap(map_desc* Map)
     {
         if (MapElement.Type == MapElem_Window)
         {
-            PlatformRectangle(MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, MapElement.Color);
+            PushRectangle(Group, MapElement.Shape.Position - 0.5f * MapElement.Shape.Size, MapElement.Shape.Size, MapElement.Color);
         }
     }
 }
 
 static void
-DrawGame(game_state* GameState, memory_arena* Arena)
+DrawGame(render_group* Group, game_state* GameState, memory_arena* Arena)
 {
     //Background
-    PlatformRectangle(V2(0, 0), V2(1.0f, ScreenTop), 0xFF4040C0);
+    PushRectangle(Group, V2(0, 0), V2(1.0f, ScreenTop), 0xFF4040C0);
     
-    u32 BackgroundStripeColor = 0xFFFFFFFF; //0x20FFFFFF;
+    u32 BackgroundStripeColor = 0x20FFFFFF;
     f32 LineWidth = 0.002f;
     for (f32 X = 0.0f; X < 1.0f; X += 0.04f)
     {
-        PlatformRectangle(V2(X - 0.5f * LineWidth, 0.0f), V2(LineWidth, ScreenTop), BackgroundStripeColor);
+        PushRectangle(Group, V2(X - 0.5f * LineWidth, 0.0f), V2(LineWidth, ScreenTop), BackgroundStripeColor);
     }
     for (f32 Y = 0.0f; Y < ScreenTop; Y += 0.04f)
     {
-        PlatformRectangle(V2(0.0f, Y - LineWidth), V2(1.0f, LineWidth), BackgroundStripeColor);
+        PushRectangle(Group, V2(0.0f, Y - LineWidth), V2(1.0f, LineWidth), BackgroundStripeColor);
     }
     
     if (GameState->Editing)
     {
-        DrawMapForEditor(GameState->Map);
+        DrawMapForEditor(Group, GameState->Map);
     }
     else
     {
-        DrawMap(GameState->Map);
+        DrawMap(Group, GameState->Map);
     }
 }
 
-void GameUpdateAndRender(game_state* GameState, float DeltaTime, game_input* Input, allocator Allocator)
+void GameUpdateAndRender(render_group* RenderGroup, game_state* GameState, float DeltaTime, game_input* Input, allocator Allocator)
 {
     UpdateConsole(GameState, &GameState->Console, Input, Allocator.Transient, DeltaTime);
     
@@ -442,21 +444,21 @@ void GameUpdateAndRender(game_state* GameState, float DeltaTime, game_input* Inp
     if (GameState->Editing)
     {
         Assert(GameState->Map);
-        DrawGame(GameState, Allocator.Transient);
-        RunEditor(GameState, Input, Allocator);
+        DrawGame(RenderGroup, GameState, Allocator.Transient);
+        RunEditor(RenderGroup, GameState, Input, Allocator);
     }
     else
     {
         Assert(GameState->Map);
         SimulateGame(GameState, Input, DeltaTime, Allocator.Permanent);
-        DrawGame(GameState, Allocator.Transient);
+        DrawGame(RenderGroup, GameState, Allocator.Transient);
     }
     
-    PlatformDrawText(ArenaPrint(Allocator.Transient, "Map %u", GameState->MapIndex), V2(0, 0), V2(0.1f, 0.05f));
+    PushText(RenderGroup, ArenaPrint(Allocator.Transient, "Map %u", GameState->MapIndex), V2(0, 0));
     
     string MemoryString = ArenaPrint(Allocator.Transient, "%u bytes Permanent, %u bytes Transient", 
                                      Allocator.Permanent->Used, Allocator.Transient->Used);
-    PlatformDrawText(MemoryString, V2(0.35f, 0.0f), V2(0.3f, 0.02f), 0xFF000000);
+    PushText(RenderGroup, MemoryString, V2(0.35f, 0.0f));
     
-    DrawConsole(&GameState->Console);
+    DrawConsole(&GameState->Console, RenderGroup);
 }

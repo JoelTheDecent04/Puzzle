@@ -159,7 +159,7 @@ SaveMapToDisk(game_state* GameState, memory_arena* Arena)
 }
 
 static void
-RunEditor(game_state* GameState, game_input* Input, allocator Allocator)
+RunEditor(render_group* Group, game_state* GameState, game_input* Input, allocator Allocator)
 {
     memory_arena* TArena = Allocator.Transient;
     memory_arena* PArena = Allocator.Permanent;
@@ -172,7 +172,7 @@ RunEditor(game_state* GameState, game_input* Input, allocator Allocator)
         Editor->Dragging = false;
     }
     
-    PlatformRectangle(V2(0.0f, 0.1f), V2(0.5f, 0.5f), 0x80808080);
+    PushRectangle(Group, V2(0.0f, 0.1f), V2(0.5f, 0.5f), 0x80808080);
     
     i32 NextElementSelection = 0;
     
@@ -190,7 +190,7 @@ RunEditor(game_state* GameState, game_input* Input, allocator Allocator)
         Box.MinCorner -= Gap;
         Box.MaxCorner += Gap;
         
-        PlatformRectangle(Box, 0, 0xFFFF0000);
+        PushRectangleOutline(Group, Box, 0xFFFF0000);
         
         if (Editor->Dragging)
         {
@@ -207,7 +207,7 @@ RunEditor(game_state* GameState, game_input* Input, allocator Allocator)
         }
     }
     
-    BeginGUI(Input);
+    BeginGUI(Input, Group);
     gui_layout Layout = DefaultLayout(0.0f, ScreenTop);
     
     string Path = ArenaPrint(TArena, "maps/map%u.bin", GameState->MapIndex);
