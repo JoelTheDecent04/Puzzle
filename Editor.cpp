@@ -18,7 +18,7 @@ ChangeMap(game_state* GameState, u32 NewMapIndex, memory_arena* Arena)
     GameState->MapIndex = NewMapIndex;
 }
 
-void
+static inline void
 DeleteElement(u32 Index, map_desc* Map)
 {
     Map->Elements[Index] = {MapElem_Null};

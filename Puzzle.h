@@ -200,6 +200,13 @@ enum
     Button_Right    = (1 << 8),
 };
 
+struct input_state
+{
+    button_state Buttons;
+    v2 Cursor;
+    v2 Movement;
+};
+
 struct game_input
 {
     button_state Button;

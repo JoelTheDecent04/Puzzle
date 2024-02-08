@@ -97,12 +97,6 @@ ID2D1Bitmap1* Win32LoadFont(char* Path, memory_arena* Arena);
 
 void DrawString(v2 Position, string String);
 
-struct input_state
-{
-    button_state Buttons;
-    v2 Cursor;
-    v2 Movement;
-};
 
 void KeyboardAndMouseInputState(input_state* InputState, HWND Window);
 
@@ -351,7 +345,7 @@ LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lPa
             Assert(wParam < 128);
             char Char = (char)wParam;
             
-            LOG("Char: %u\n", Char);
+            //LOG("Char: %u\n", Char);
             
             if (Char == '\r')
                 Char = '\n';

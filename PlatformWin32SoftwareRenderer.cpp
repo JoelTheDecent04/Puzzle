@@ -2,12 +2,17 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+#define DEBUG 1
+
 #include "Utilities.cpp"
 #include "Maths.cpp"
+
+#include "Puzzle.h"
 
 //Platform functions
 void Win32DrawTexture(int Identifier, int Index, v2 Position, v2 Size, float Angle);
 void Win32Rectangle(v2 Position, v2 Dimensions, u32 FillColour, u32 BorderColour = 0);
+void Win32Circle(v2 Position, f32 Radius, u32 Color);
 void Win32Line(v2 Start_, v2 End_, u32 Colour, f32 Thickness);
 void Win32DrawText(string String, v2 Position, v2 Size, u32 Color = 0xFF808080, bool Centered = false);
 void Win32DebugOut(string String);
@@ -18,12 +23,15 @@ void Win32SaveFile(char* Path, span<u8> Data);
 
 #define PlatformDrawTexture Win32DrawTexture
 #define PlatformRectangle Win32Rectangle
+#define PlatformCircle Win32Circle
 #define PlatformLine Win32Line
 #define PlatformDrawText Win32DrawText
 #define PlatformDebugOut Win32DebugOut
 #define PlatformSleep Win32Sleep
 #define PlatformLoadFile Win32LoadFile
 #define PlatformSaveFile Win32SaveFile
+
+f32 DrawString(v2 Position, string String, f32 Height);
 
 //TODO: Fix
 static inline void 
@@ -32,47 +40,18 @@ Win32Rectangle(rect Rect, u32 FillColor, u32 BorderColor = 0)
 	Win32Rectangle(Rect.MinCorner, Rect.MaxCorner - Rect.MinCorner, FillColor, BorderColor);
 }
 
-struct game_input
-{
-	struct
-	{
-		bool OpenShop;
-		bool NextWave;
-		bool Interact;
-		bool ShowHideMap;
-		bool MouseLeft;
-		bool MouseDownLeft;
-		bool MouseUpLeft;
-		bool Jump;
-        bool Menu;
-        
-		bool TestKey;
-	} Buttons;
-	struct
-	{
-		float MovementX; //normalised values [-1, 1]
-		float MovementY;
-		bool Jump;
-        
-		bool Test;
-		bool Interact;
-		bool LShift;
-        bool Menu;
-	} Controls;
-    
-	v2 Cursor;
-};
-
 memory_arena GlobalDebugArena;
 
 #include "GUI.cpp"
 #include "Puzzle.cpp"
 
-#define Log(...) \
+#define LOG(...) \
 OutputDebugStringA(ArenaPrint(&GlobalDebugArena, __VA_ARGS__).Text); \
 OutputDebugStringA("\n")
 
+std::string GlobalTextInput;
 LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
+void KeyboardAndMouseInputState(input_state* InputState, HWND Window);
 
 int BufferWidth = 1280, BufferHeight = 720;
 u32* GlobalBackBuffer;
@@ -154,55 +133,27 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 			DispatchMessage(&Message);
 		}
 		
-		game_input CurrentInput = {};
+		game_input Input = {};
+        input_state CurrentInputState = {};
         
 		if (GetActiveWindow())
 		{
-			CurrentInput.Controls.Jump = (GetAsyncKeyState('W') & 0x8000);
-			CurrentInput.Buttons.Jump = (CurrentInput.Controls.Jump && !PreviousInput.Controls.Jump);
-            
-			if ((GetAsyncKeyState('A') & 0x8000))
-			{
-				CurrentInput.Controls.MovementX -= 1.0f;
-			}
-			if ((GetAsyncKeyState('D') & 0x8000))
-			{
-				CurrentInput.Controls.MovementX += 1.0f;
-			}
-            
-			bool MouseIsDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000);
-			bool MouseWasDown = PreviousInput.Buttons.MouseLeft;
-            
-			CurrentInput.Buttons.MouseLeft = MouseIsDown;
-			CurrentInput.Buttons.MouseUpLeft = (MouseWasDown && !MouseIsDown);
-			CurrentInput.Buttons.MouseDownLeft = (!MouseWasDown && MouseIsDown);
-            
-			bool InteractKeyDown = GetAsyncKeyState('E') & 0x8000;
-			CurrentInput.Buttons.Interact = InteractKeyDown && (!PreviousInput.Controls.Interact);
-			CurrentInput.Controls.Interact = InteractKeyDown;
-            
-			bool MenuKeyDown = GetAsyncKeyState('C') & 0x8000;
-			CurrentInput.Buttons.Menu = MenuKeyDown && (!PreviousInput.Controls.Menu);
-			CurrentInput.Controls.Menu = MenuKeyDown;
-            
-			CurrentInput.Controls.LShift = (GetAsyncKeyState(VK_LSHIFT) & 0x8000);
-            
-            POINT CursorPos = {};
-            GetCursorPos(&CursorPos);
-            ScreenToClient(Window, &CursorPos);
-            
-            GetClientRect(Window, &ClientRect);
-            
-            if (ClientRect.right > 0 && ClientRect.bottom > 0)
-            {
-                CurrentInput.Cursor.X = (f32)CursorPos.x / ClientRect.right;
-                CurrentInput.Cursor.Y = (f32)(ClientRect.bottom - CursorPos.y) / ClientRect.right;
-            }
-            
-            PreviousInput = CurrentInput;
+            KeyboardAndMouseInputState(&CurrentInputState, Window);
         }
         
-        GameUpdateAndRender(GameState, SecondsPerFrame, &CurrentInput, Allocator);
+        Input.Button = CurrentInputState.Buttons;
+        Input.ButtonDown = (~PreviousInput.Button & CurrentInputState.Buttons);
+        Input.ButtonUp = (PreviousInput.Button & ~CurrentInputState.Buttons);
+        Input.Movement = CurrentInputState.Movement;
+        
+        if (LengthSq(Input.Movement) > 1.0f)
+            Input.Movement = UnitV(Input.Movement);
+        
+        Input.Cursor = CurrentInputState.Cursor;
+        Input.TextInput = (char*)GlobalTextInput.c_str();
+        PreviousInput = Input;
+        
+        GameUpdateAndRender(GameState, SecondsPerFrame, &Input, Allocator);
         
         ResetArena(&TransientArena);
         
@@ -230,30 +181,87 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
         }
         else
         {
-            Log("Current Frame Rate: %.0f", CurrentFrameRate);
+            LOG("Current Frame Rate: %.0f", CurrentFrameRate);
             SecondsPerFrame = TimeTaken;
         }
     }
 }
 
-
 LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam)
 {
-    switch (Message)
-    {
-        case WM_DESTROY:
+	switch (Message)
+	{
+		case WM_DESTROY:
+		{
+			PostQuitMessage(0);
+			return 0;
+		}
+        case WM_CHAR:
         {
-            PostQuitMessage(0);
-            return 0;
-        }
+            Assert(wParam < 128);
+            char Char = (char)wParam;
+            
+            //LOG("Char: %u\n", Char);
+            
+            if (Char == '\r')
+                Char = '\n';
+            
+            GlobalTextInput.append(1, Char);
+        } break;
         
-        default:
-        {
-            return DefWindowProc(Window, Message, wParam, lParam);
-        }
-    }	
-    return 0;
+		default:
+		{
+			return DefWindowProc(Window, Message, wParam, lParam);
+		}
+	}	
+	return 0;
 }
+
+
+static void
+KeyboardAndMouseInputState(input_state* InputState, HWND Window)
+{
+    //Buttons
+    if (GetAsyncKeyState('W') & 0x8000)
+        InputState->Buttons |= Button_Jump;
+    if (GetAsyncKeyState(VK_SPACE) & 0x8000)
+        InputState->Buttons |= Button_Jump;
+    if (GetAsyncKeyState('E') & 0x8000)
+        InputState->Buttons |= Button_Interact;
+    if (GetAsyncKeyState('C') & 0x8000)
+        InputState->Buttons |= Button_Menu;
+    if (GetAsyncKeyState(VK_LBUTTON) & 0x8000)
+        InputState->Buttons |= Button_LMouse;
+    if (GetAsyncKeyState(VK_LSHIFT) & 0x8000)
+        InputState->Buttons |= Button_LShift;
+    if (GetAsyncKeyState(VK_F1) & 0x8000)
+        InputState->Buttons |= Button_Console;
+    if (GetAsyncKeyState(VK_LEFT) & 0x8000)
+        InputState->Buttons |= Button_Left;
+    if (GetAsyncKeyState(VK_RIGHT) & 0x8000)
+        InputState->Buttons |= Button_Right;
+    
+    //Movement
+    if ((GetAsyncKeyState('A') & 0x8000))
+        InputState->Movement.X -= 1.0f;
+    if ((GetAsyncKeyState('D') & 0x8000))
+        InputState->Movement.X += 1.0f;
+    
+    //Cursor
+    POINT CursorPos = {};
+    GetCursorPos(&CursorPos);
+    ScreenToClient(Window, &CursorPos);
+    
+    RECT ClientRect;
+    GetClientRect(Window, &ClientRect);
+    
+    if (ClientRect.right > 0 && ClientRect.bottom > 0)
+    {
+        InputState->Cursor.X += (f32)CursorPos.x / ClientRect.right;
+        InputState->Cursor.Y += (f32)(ClientRect.bottom - CursorPos.y) / ClientRect.right;
+    }
+}
+
 
 void Win32DrawTexture(int Identifier, int Index, v2 Position, v2 Size, float Angle)
 {
@@ -302,24 +310,61 @@ DrawRotatedRectangle(v2 Origin, v2 XAxis, v2 YAxis, u32 Color)
     }
 }
 
-void Win32Rectangle(v2 Position, v2 Size, uint32_t FillColour, uint32_t BorderColour)
+void Win32Rectangle(v2 Position, v2 Size, uint32_t Color, uint32_t BorderColour)
 {
-    int X0 = Round(Position.X * BufferWidth);
-    int X1 = Round((Position.X + Size.X) * BufferWidth);
-    int Y0 = Round(Position.Y * BufferWidth);
-    int Y1 = Round((Position.Y + Size.Y) * BufferWidth);
+    f32 X0 = Position.X * BufferWidth;
+    f32 X1 = (Position.X + Size.X) * BufferWidth;
+    f32 Y0 = Position.Y * BufferWidth;
+    f32 Y1 = (Position.Y + Size.Y) * BufferWidth;
     
-    X0 = Clamp(X0, 0, BufferWidth);
-    X1 = Clamp(X1, 0, BufferWidth);
-    Y0 = Clamp(Y0, 0, BufferHeight);
-    Y1 = Clamp(Y1, 0, BufferHeight);
+    int PixelX0 = Clamp(Floor(X0), 0, BufferWidth - 1);
+    int PixelX1 = Clamp(Floor(X1) , 0, BufferWidth - 1);
+    int PixelY0 = Clamp(Floor(Y0), 0, BufferHeight - 1);
+    int PixelY1 = Clamp(Floor(Y1) , 0, BufferHeight - 1);
     
-    for (i32 Y = Y0; Y < Y1; Y++)
+    f32 Alpha = (float)(Color >> 24) / 255.0f;
+    
+    u8 R = Color >> 16;
+    u8 G = Color >> 8;
+    u8 B = Color;
+    
+    for (i32 Y = PixelY0; Y <= PixelY1; Y++)
     {
-        u32* Row = GlobalBackBuffer + Y * BufferWidth;
-        for (i32 X = X0; X < X1; X++)
+        f32 YSubpixelAlpha = 1.0f;
+        if (Y == PixelY0)
         {
-            Row[X] = FillColour;
+            YSubpixelAlpha = 1.0f - (Y0 - (f32)Y);
+        }
+        if (Y == PixelY1)
+        {
+            YSubpixelAlpha = (Y1 - (f32)Y);
+        }
+        
+        u32* Row = GlobalBackBuffer + Y * BufferWidth;
+        for (i32 X = PixelX0; X <= PixelX1; X++)
+        {
+            f32 XSubpixelAlpha = 1.0f;
+            if (X == PixelX0)
+            {
+                XSubpixelAlpha = 1.0f - (X0 - (f32)X);
+            }
+            if (X == PixelX1)
+            {
+                XSubpixelAlpha = (X1 - (f32)X);
+            }
+            
+            f32 PixelA = XSubpixelAlpha * YSubpixelAlpha * Alpha;
+            
+            u32 OldRGB = Row[X];
+            u8 OldR = OldRGB >> 16;
+            u8 OldG = OldRGB >> 8;
+            u8 OldB = OldRGB;
+            
+            u8 NewR = (u8)((1.0f - PixelA) * OldR) + (u8)(PixelA * R);
+            u8 NewG = (u8)((1.0f - PixelA) * OldG) + (u8)(PixelA * G);
+            u8 NewB = (u8)((1.0f - PixelA) * OldB) + (u8)(PixelA * B);
+            
+            Row[X] = (NewR << 16) | (NewG << 8) | NewB;
         }
     }
 }
@@ -457,4 +502,15 @@ Win32SaveFile(char* Path, span<u8> Data)
 		OutputDebugStringA("\n");
 	}
 #endif
+}
+
+f32 DrawString(v2 Position, string String, f32 Height)
+{
+    LOG("Draw string\n");
+    return 0.0f;
+}
+
+void Win32Circle(v2 Position, f32 Radius, u32 Color)
+{
+    LOG("Circle\n");
 }

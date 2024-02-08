@@ -403,14 +403,15 @@ DrawGame(game_state* GameState, memory_arena* Arena)
     //Background
     PlatformRectangle(V2(0, 0), V2(1.0f, ScreenTop), 0xFF4040C0);
     
-    u32 BackgroundStripeColor = 0x20FFFFFF;
+    u32 BackgroundStripeColor = 0xFFFFFFFF; //0x20FFFFFF;
+    f32 LineWidth = 0.002f;
     for (f32 X = 0.0f; X < 1.0f; X += 0.04f)
     {
-        PlatformLine(V2(X, 0.0f), V2(X, ScreenTop), BackgroundStripeColor, 0.002f);
+        PlatformRectangle(V2(X - 0.5f * LineWidth, 0.0f), V2(LineWidth, ScreenTop), BackgroundStripeColor);
     }
     for (f32 Y = 0.0f; Y < ScreenTop; Y += 0.04f)
     {
-        PlatformLine(V2(0.0f, Y), V2(1.0f, Y), BackgroundStripeColor, 0.002f);
+        PlatformRectangle(V2(0.0f, Y - LineWidth), V2(1.0f, LineWidth), BackgroundStripeColor);
     }
     
     if (GameState->Editing)
