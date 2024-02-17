@@ -228,12 +228,14 @@ DrawConsole(console* Console, render_group* RenderGroup)
                       0xFFFFFFFF);
     }
     
+    u32 TextColor = 0xFFFFFF;
+    
     string Input = {Console->Input, (u32)Console->InputLength};
-    PushText(RenderGroup, Input, V2(X0, Y0), InputTextHeight);
+    PushText(RenderGroup, Input, V2(X0, Y0), TextColor, InputTextHeight);
     
     for (string History : Console->History)
     {
         Y0 += InputTextHeight + Pad;
-        PushText(RenderGroup, History, V2(X0, Y0), InputTextHeight);
+        PushText(RenderGroup, History, V2(X0, Y0), TextColor, InputTextHeight);
     }
 }

@@ -260,6 +260,6 @@ struct render_shape
 struct render_group
 {
     u32 ShapeCount;
-    render_shape Shapes[1024];
+    render_shape Shapes[2048];
 };
 

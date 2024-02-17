@@ -1,6 +1,7 @@
 #define UNICODE
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <intrin.h>
 
 #include "Utilities.cpp"
 #include "Maths.cpp"
@@ -14,8 +15,31 @@ OutputDebugStringA("\n")
 
 struct back_buffer
 {
-    int Width, Height;
+    u16 Width, Height;
+    u16 DispWidth, DispHeight;
+    f32 Scale;
     u32* Pixels;
+    
+    u32 ThreadY0;
+    u32 ThreadY1;
+};
+
+struct render_queue_entry
+{
+    render_group* RenderGroup;
+    back_buffer Buffer;
+};
+
+struct render_queue
+{
+    HANDLE Semaphore;
+    
+    u32 ThreadCount;
+    
+    volatile u32 EntryCount;
+    volatile u32 EntriesStarted;
+    volatile u32 EntriesDone;
+    render_queue_entry Entries[128];
 };
 
 void Win32DrawTexture(int Identifier, int Index, v2 Position, v2 Size, float Angle);
@@ -28,12 +52,15 @@ std::string GlobalTextInput;
 LRESULT CALLBACK WindowProc(HWND Window, UINT Message, WPARAM wParam, LPARAM lParam);
 void KeyboardAndMouseInputState(input_state* InputState, HWND Window);
 void SoftwareRender(render_group* RenderGroup, back_buffer BackBuffer);
-//f32 DrawString(v2 Position, string String, f32 Height);
+back_buffer CreateBackBuffer(int Width, int Height);
+void Win32Text(back_buffer Buffer, v2 Position, string String, u32 Color);
+void InitFont(char* Path, back_buffer Buffer, memory_arena* Arena);
 
+render_queue* CreateRenderQueueAndThreads(memory_arena* Arena, u32 ThreadCount);
+void RenderMultithreaded(render_queue* Queue, render_group* RenderGroup, back_buffer* Buffer);
 
 //Platform functions
 void Win32DebugOut(string String);
-void Win32Sleep(int Milliseconds);
 span<u8> Win32LoadFile(memory_arena* Arena, char* Path);
 void Win32SaveFile(char* Path, span<u8> Data);
 f32 Win32TextWidth(string String, f32 FontSize);
@@ -45,7 +72,6 @@ f32 Win32TextWidth(string String, f32 FontSize);
 #define PlatformTextWidth Win32TextWidth
 
 #include "Puzzle.cpp"
-
 
 int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowCode)
 {
@@ -61,7 +87,7 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 		return -1;
 	}
 	
-    int BufferWidth = 1280, BufferHeight = 720;
+    int BufferWidth = 1920, BufferHeight = 1080;
     
 	RECT ClientRect = { 0, 0, BufferWidth, BufferHeight };
 	AdjustWindowRect(&ClientRect, WS_OVERLAPPEDWINDOW, FALSE);
@@ -84,13 +110,7 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
     
     HDC WindowDC = GetDC(Window);
     
-    void* Pixels;
-    HBITMAP Bitmap = CreateDIBSection(WindowDC, &BitmapInfo,DIB_RGB_COLORS, &Pixels, 0, 0);
-    
-    back_buffer BackBuffer = {};
-    BackBuffer.Width = BufferWidth;
-    BackBuffer.Height = BufferHeight;
-    BackBuffer.Pixels = (u32*)Pixels;
+    back_buffer BackBuffer = CreateBackBuffer(BufferWidth, BufferHeight);
     
 	memory_arena TransientArena = Win32CreateMemoryArena(Megabytes(16), TRANSIENT);
 	memory_arena PermanentArena = Win32CreateMemoryArena(Megabytes(16), PERMANENT);
@@ -100,6 +120,7 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
 	Allocator.Transient = &TransientArena;
 	Allocator.Permanent = &PermanentArena;
     
+    InitFont("assets/TitilliumWeb-Regular.ttf", BackBuffer, &TransientArena);
 	game_state* GameState = GameInitialise(Allocator);
 	
 	LARGE_INTEGER CounterFrequency;
@@ -115,6 +136,8 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
     
     render_group RenderGroup;
     RenderGroup.ShapeCount = 0;
+    
+    render_queue* RenderQueue = CreateRenderQueueAndThreads(&PermanentArena, 3);
     
 	while (true)
 	{
@@ -155,15 +178,16 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
         
         GameUpdateAndRender(&RenderGroup, GameState, SecondsPerFrame, &Input, Allocator);
         
-        ResetArena(&TransientArena);
-        
-        SoftwareRender(&RenderGroup, BackBuffer);
+        RenderMultithreaded(RenderQueue, &RenderGroup, &BackBuffer);
         RenderGroup.ShapeCount = 0;
+        
+        ResetArena(&TransientArena);
+        GlobalTextInput.clear();
         
         StretchDIBits(WindowDC, 
                       0, 0, ClientRect.right, ClientRect.bottom,
                       0, 0, BufferWidth, BufferHeight,
-                      Pixels, &BitmapInfo, DIB_RGB_COLORS, SRCCOPY);
+                      BackBuffer.Pixels, &BitmapInfo, DIB_RGB_COLORS, SRCCOPY);
         
         LARGE_INTEGER PerformanceCount;
         QueryPerformanceCounter(&PerformanceCount);
@@ -172,7 +196,7 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
             OutputDebugStringA("Can't keep up\n");
         }
         float TimeTaken = (float)(PerformanceCount.QuadPart - StartCount.QuadPart) / CounterFrequency.QuadPart;
-        float CurrentFrameRate = 1.0f / TimeTaken;
+        LOG("Frame: %.2f ms", TimeTaken * 1000.0f);
         
         if (LockFPS)
         {
@@ -184,7 +208,6 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
         }
         else
         {
-            LOG("Current Frame Rate: %.0f", CurrentFrameRate);
             SecondsPerFrame = TimeTaken;
         }
     }
@@ -265,21 +288,13 @@ KeyboardAndMouseInputState(input_state* InputState, HWND Window)
     }
 }
 
-
-void Win32DrawTexture(int Identifier, int Index, v2 Position, v2 Size, float Angle)
-{
-}
-
-#if 0
 static void
-DrawRotatedRectangle(v2 Origin, v2 XAxis, v2 YAxis, u32 Color)
+DrawRotatedRectangle(back_buffer Buffer, v2 Origin, v2 XAxis, v2 YAxis, u32 Color)
 {
-    f32 Scale = (f32)BufferWidth;
-    
-    v2 A = Scale * Origin;
-    v2 B = Scale * (Origin + XAxis);
-    v2 C = Scale * (Origin + XAxis + YAxis);
-    v2 D = Scale * (Origin + YAxis);
+    v2 A = Buffer.Scale * Origin;
+    v2 B = Buffer.Scale * (Origin + XAxis);
+    v2 C = Buffer.Scale * (Origin + XAxis + YAxis);
+    v2 D = Buffer.Scale * (Origin + YAxis);
     
     f32 MinX = Min(A.X, B.X, C.X, D.X);
     f32 MaxX = Max(A.X, B.X, C.X, D.X);
@@ -287,16 +302,16 @@ DrawRotatedRectangle(v2 Origin, v2 XAxis, v2 YAxis, u32 Color)
     f32 MaxY = Max(A.Y, B.Y, C.Y, D.Y);
     
     i32 X0 = Max(0, (i32)MinX);
-    i32 X1 = Min(BufferWidth, (i32)MaxX);
-    i32 Y0 = Max(0, (i32)MinY);
-    i32 Y1 = Min(BufferHeight, (i32)MaxY);
+    i32 X1 = Min(Buffer.Width, (i32)MaxX);
+    i32 Y0 = Max(Buffer.ThreadY0, (i32)MinY);
+    i32 Y1 = Min(Buffer.ThreadY1, (i32)MaxY);
     
     v2 PerpXAxis = Perp(XAxis);
     v2 PerpYAxis = Perp(YAxis);
     
     for (i32 Y = Y0; Y < Y1; Y++)
     {
-        u32* Row = GlobalBackBuffer + Y * BufferWidth;
+        u32* Row = Buffer.Pixels + Y * Buffer.Width;
         for (int X = X0; X < X1; X++)
         {
             v2 P = V2((f32)X, (f32)Y);
@@ -313,46 +328,10 @@ DrawRotatedRectangle(v2 Origin, v2 XAxis, v2 YAxis, u32 Color)
         }
     }
 }
-#endif
-
-void Win32Line(v2 Start, v2 End, u32 Color, f32 Thickness)
-{
-    v2 XAxis = End - Start;
-    v2 YAxis = Thickness * UnitV(Perp(XAxis));
-    v2 Origin = Start - 0.5f * YAxis;
-    
-    f32 StepLength = 0.1f;
-    f32 LineLength = Length(XAxis);
-    
-    f32 Section = 0.0f;
-    
-    while (Section < LineLength)
-    {
-        f32 SectionLength = StepLength;
-        if (LineLength - Section < SectionLength)
-        {
-            SectionLength = LineLength - Section;
-        }
-        
-        //DrawRotatedRectangle(Origin, SectionLength * UnitV(XAxis), YAxis, Color);
-        
-        Origin += SectionLength * UnitV(XAxis);
-        Section += StepLength;
-    }
-}
-
-void Win32DrawText(string String, v2 Position, v2 Size, u32 Color, bool Centered)
-{
-}
 
 void Win32DebugOut(string String)
 {
 	OutputDebugStringA(String.Text);
-}
-
-void Win32Sleep(int Milliseconds)
-{
-	Sleep(Milliseconds);
 }
 
 static memory_arena
@@ -450,77 +429,188 @@ Win32SaveFile(char* Path, span<u8> Data)
 #endif
 }
 
-f32 DrawString(v2 Position, string String, f32 Height)
+inline u32 
+GetPixel(back_buffer Buffer, int X, int Y)
 {
-    LOG("Draw string\n");
-    return 0.0f;
+    u32 Index = Y * Buffer.Width + X;
+    u32 RGB = Buffer.Pixels[Index];
+    return RGB;
 }
 
-void Win32Rectangle(back_buffer Buffer, v2 Position, v2 Size, uint32_t Color)
+inline void 
+SetPixel(back_buffer Buffer, int X, int Y, u32 RGB)
 {
-    f32 X0 = Position.X * Buffer.Width;
-    f32 X1 = (Position.X + Size.X) * Buffer.Width;
-    f32 Y0 = Position.Y * Buffer.Width;
-    f32 Y1 = (Position.Y + Size.Y) * Buffer.Width;
+    u32 Index = Y * Buffer.Width + X;
+    Buffer.Pixels[Index] = RGB;
+}
+
+void BlendPixel(back_buffer Buffer, int X, int Y, u32 Color)
+{
+    u32 OldColor = GetPixel(Buffer, X, Y);
     
-    int PixelX0 = Clamp(Floor(X0), 0, Buffer.Width - 1);
-    int PixelX1 = Clamp(Floor(X1) , 0, Buffer.Width - 1);
-    int PixelY0 = Clamp(Floor(Y0), 0, Buffer.Height - 1);
-    int PixelY1 = Clamp(Floor(Y1) , 0, Buffer.Height - 1);
+    u8 OldR = OldColor >> 16;
+    u8 OldG = OldColor >> 8;
+    u8 OldB = OldColor;
     
-    f32 Alpha = (float)(Color >> 24) / 255.0f;
-    
+    f32 A = (f32)(Color >> 24) / 255.0f;
     u8 R = Color >> 16;
     u8 G = Color >> 8;
     u8 B = Color;
     
-    for (i32 Y = PixelY0; Y <= PixelY1; Y++)
+    u8 NewR = (u8)(A * R + (1 - A) * OldR);
+    u8 NewG = (u8)(A * G + (1 - A) * OldG);
+    u8 NewB = (u8)(A * B + (1 - A) * OldB);
+    
+    u32 RGB = (NewR << 16) | (NewG << 8) | NewB;
+    SetPixel(Buffer, X, Y, RGB);
+}
+
+void Win32Rectangle(back_buffer Buffer, v2 Position, v2 Size, uint32_t Color)
+{
+    Assert(Buffer.Width % 16 == 0);
+    Assert(Buffer.Height % 16 == 0);
+    
+    i16 X0 = (i16)(Position.X * Buffer.Scale);
+    i16 X1 = (i16)((Position.X + Size.X) * Buffer.Scale) + 1;
+    i16 Y0 = (i16)(Position.Y * Buffer.Width);
+    i16 Y1 = (i16)((Position.Y + Size.Y) * Buffer.Scale);
+    
+    int IterX0 = Clamp(RoundDownToMultipleOf(8, X0), 0, RoundDownToMultipleOf(8, Buffer.Width - 1));
+    int IterX1 = Clamp(RoundDownToMultipleOf(8, X1), 0, RoundDownToMultipleOf(8, Buffer.Width - 1));
+    int IterY0 = Clamp(Floor(Y0), Buffer.ThreadY0, Buffer.ThreadY1);
+    int IterY1 = Clamp(Floor(Y1), Buffer.ThreadY0, Buffer.ThreadY1);
+    
+    __m256i X0_8x = _mm256_set1_epi32(X0);
+    __m256i X1_8x = _mm256_set1_epi32(X1 + 1);
+    
+    __m256i XOffsets_8x = _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0);
+    
+    __m256i Color_8x = _mm256_set1_epi32(Color);
+    
+    for (int Y = IterY0; Y < IterY1; Y++)
     {
-        f32 YSubpixelAlpha = 1.0f;
-        if (Y == PixelY0)
+        for (int X = IterX0; X <= IterX1; X += 8)
         {
-            YSubpixelAlpha = 1.0f - (Y0 - (f32)Y);
-        }
-        if (Y == PixelY1)
-        {
-            YSubpixelAlpha = (Y1 - (f32)Y);
-        }
-        
-        u32* Row = Buffer.Pixels + Y * Buffer.Width;
-        for (i32 X = PixelX0; X <= PixelX1; X++)
-        {
-            f32 XSubpixelAlpha = 1.0f;
-            if (X == PixelX0)
-            {
-                XSubpixelAlpha = 1.0f - (X0 - (f32)X);
-            }
-            if (X == PixelX1)
-            {
-                XSubpixelAlpha = (X1 - (f32)X);
-            }
+            u32 Index = Y * Buffer.Width + X;
             
-            f32 PixelA = XSubpixelAlpha * YSubpixelAlpha * Alpha;
+            __m256i X_8x = _mm256_add_epi32(_mm256_set1_epi32(X), XOffsets_8x);
             
-            u32 OldRGB = Row[X];
-            u8 OldR = OldRGB >> 16;
-            u8 OldG = OldRGB >> 8;
-            u8 OldB = OldRGB;
+            // (X >= X0) & (X < X1) 
+            __m256i Mask_8x = _mm256_and_si256(_mm256_cmpgt_epi32(X_8x, X0_8x), _mm256_cmpgt_epi32(X1_8x, X_8x));
             
-            u8 NewR = (u8)((1.0f - PixelA) * OldR) + (u8)(PixelA * R);
-            u8 NewG = (u8)((1.0f - PixelA) * OldG) + (u8)(PixelA * G);
-            u8 NewB = (u8)((1.0f - PixelA) * OldB) + (u8)(PixelA * B);
+            __m256i OldColor_8x = _mm256_load_si256((__m256i*)(Buffer.Pixels + Index));
             
-            Row[X] = (NewR << 16) | (NewG << 8) | NewB;
+            _mm256_store_si256((__m256i*)(Buffer.Pixels + Index), _mm256_blendv_epi8(OldColor_8x, Color_8x, Mask_8x));
         }
     }
 }
 
-void Win32Circle(back_buffer Buffer, v2 Position, f32 Radius, u32 Color)
+
+//This routine uses SSE / 4 lane SIMD
+void Win32RectangleTransparent(back_buffer Buffer, v2 Position, v2 Size, uint32_t Color)
 {
-    LOG("Circle\n");
+    f32 X0 = (Position.X) * Buffer.Scale;
+    f32 X1 = (Position.X + Size.X) * Buffer.Scale;
+    f32 Y0 = (Position.Y) * Buffer.Scale;
+    f32 Y1 = (Position.Y + Size.Y) * Buffer.Scale;
+    
+    int IterX0 = Clamp(Floor(X0), 0, Buffer.Width - 1);
+    int IterX1 = Clamp(Floor(X1), 0, Buffer.Width - 1);
+    int IterY0 = Clamp(Floor(Y0), Buffer.ThreadY0, Buffer.ThreadY1);
+    int IterY1 = Clamp(Floor(Y1), Buffer.ThreadY0, Buffer.ThreadY1);
+    
+    __m128 Color_m128 = _mm_cvtepi32_ps(_mm_cvtepu8_epi32(*(__m128i*)&Color));
+    
+    u8 Alpha_u8 = Color >> 24;
+    f32 Alpha = (f32)Alpha_u8 / 255.0f;
+    f32 InvAlpha = 1.0f - Alpha;
+    
+    __m128 Alpha_4x = _mm_set1_ps(Alpha);
+    __m128 InvAlpha_4x = _mm_set1_ps(InvAlpha);
+    
+    __m128i Shuffle = _mm_set_epi8(0, 0, 0, 0, 
+                                   0, 0, 0, 0, 
+                                   0, 0, 0, 0,
+                                   12, 8, 4, 0);
+    
+    
+    for (int Y = IterY0; Y < IterY1; Y++)
+    {
+        u32* Row = Buffer.Pixels + Buffer.Width * Y;
+        for (int X = IterX0; X <= IterX1; X ++)
+        {
+            __m128 OldColor = _mm_cvtepi32_ps(_mm_cvtepu8_epi32(*(__m128i*)&Row[X]));
+            __m128 NewColor = _mm_add_ps(_mm_mul_ps(InvAlpha_4x, OldColor), _mm_mul_ps(Alpha_4x, Color_m128));
+            __m128i NewColor_u32 = _mm_shuffle_epi8(_mm_cvtps_epi32(NewColor), Shuffle);
+            _mm_store_ss((float*)&Row[X], _mm_castsi128_ps(NewColor_u32));
+        }
+    }
 }
 
-void SoftwareRender(render_group* RenderGroup, back_buffer Buffer)
+
+void Win32Circle(back_buffer Buffer, v2 Position, f32 Radius, u32 Color)
+{
+    f32 X0 = (Position.X - Radius) * Buffer.Scale;
+    f32 X1 = (Position.X + Radius) * Buffer.Scale;
+    f32 Y0 = (Position.Y - Radius) * Buffer.Scale;
+    f32 Y1 = (Position.Y + Radius) * Buffer.Scale;
+    
+    int IterX0 = Clamp(RoundDownToMultipleOf(8, X0), 0, RoundDownToMultipleOf(8, Buffer.Width - 1));
+    int IterX1 = Clamp(RoundDownToMultipleOf(8, X1), 0, RoundDownToMultipleOf(8, Buffer.Width - 1));
+    int IterY0 = Clamp(Floor(Y0), Buffer.ThreadY0, Buffer.ThreadY1);
+    int IterY1 = Clamp(Floor(Y1), Buffer.ThreadY0, Buffer.ThreadY1);
+    
+    v2 PositionPixels = Position * Buffer.Scale;
+    f32 RadiusPixelsSq = Square(Radius * Buffer.Scale);
+    
+    __m256 XOffsets_8x = _mm256_set_ps(7.0f, 6.0f, 5.0f, 4.0f, 3.0f, 2.0f, 1.0f, 0.0f);
+    
+    __m256 CenterX_8x = _mm256_set1_ps(PositionPixels.X);
+    __m256 CenterY_8x = _mm256_set1_ps(PositionPixels.Y);
+    
+    __m256i RGB_8x = _mm256_set1_epi32(Color);
+    
+    __m256 RadiusPixelsSq_8x = _mm256_set1_ps(RadiusPixelsSq);
+    
+    for (int Y = IterY0; Y <= IterY1; Y++)
+    {
+        __m256 Y_8x = _mm256_set1_ps((f32)Y);
+        __m256 dY_8x = _mm256_sub_ps(Y_8x, CenterY_8x);
+        __m256 dYSq_8x = _mm256_mul_ps(dY_8x, dY_8x);
+        
+        for (int X = IterX0; X <= IterX1; X++)
+        {
+            u32 Index = Y * Buffer.Width + X;
+            
+            __m256 X_8x = _mm256_add_ps(_mm256_set1_ps((f32)X), XOffsets_8x);
+            __m256 dX_8x = _mm256_sub_ps(X_8x, CenterX_8x);
+            __m256 dXSq_8x = _mm256_mul_ps(dX_8x, dX_8x);
+            
+            __m256 Mask_8x = _mm256_cmp_ps(_mm256_add_ps(dYSq_8x, dXSq_8x), RadiusPixelsSq_8x, _CMP_LT_OS);
+            
+            __m256i OldRGB_8x = _mm256_load_si256((__m256i*)(Buffer.Pixels + Index));
+            _mm256_store_si256((__m256i*)(Buffer.Pixels + Index), _mm256_blendv_epi8(OldRGB_8x, RGB_8x, _mm256_castps_si256(Mask_8x)));
+        }
+    }
+}
+
+static back_buffer
+CreateBackBuffer(int Width, int Height)
+{
+    back_buffer Buffer = {};
+    Buffer.Width = RoundUpToMultipleOf(16, Width);
+    Buffer.Height = RoundUpToMultipleOf(16, Height);
+    Buffer.DispWidth = Width;
+    Buffer.DispHeight = Height;
+    
+    int PixelCount = Buffer.Width * Buffer.Height;
+    Buffer.Pixels = (u32*)VirtualAlloc(0, PixelCount * 4, MEM_COMMIT|MEM_RESERVE, PAGE_READWRITE);
+    Buffer.Scale = (f32)Width;
+    return Buffer;
+}
+
+static void 
+SoftwareRender(render_group* RenderGroup, back_buffer Buffer)
 {
     for (u32 ShapeIndex = 0; ShapeIndex < RenderGroup->ShapeCount; ShapeIndex++)
     {
@@ -529,7 +619,15 @@ void SoftwareRender(render_group* RenderGroup, back_buffer Buffer)
         {
             case Render_Rectangle:
             {
-                Win32Rectangle(Buffer, Shape.Rectangle.Position, Shape.Rectangle.Size, Shape.Color);
+                u8 Alpha = Shape.Color >> 24;
+                if (Alpha == 0xFF)
+                {
+                    Win32Rectangle(Buffer, Shape.Rectangle.Position, Shape.Rectangle.Size, Shape.Color);
+                }
+                else
+                {
+                    Win32RectangleTransparent(Buffer, Shape.Rectangle.Position, Shape.Rectangle.Size, Shape.Color);
+                }
             } break;
             
             case Render_Circle:
@@ -539,11 +637,16 @@ void SoftwareRender(render_group* RenderGroup, back_buffer Buffer)
             
             case Render_Line:
             {
+                v2 XAxis = Shape.Line.End - Shape.Line.Start;
+                v2 YAxis = UnitV(Perp(XAxis)) * Shape.Line.Thickness;
+                v2 Origin = Shape.Line.Start - 0.5f * YAxis;
                 
+                DrawRotatedRectangle(Buffer, Origin, XAxis, YAxis, Shape.Color);
             } break;
             
             case Render_Text:
             {
+                Win32Text(Buffer, Shape.Text.Position, Shape.Text.String, Shape.Color);
             } break;
             
             default: Assert(0);
@@ -551,7 +654,185 @@ void SoftwareRender(render_group* RenderGroup, back_buffer Buffer)
     }
 }
 
-f32 Win32TextWidth(string String, f32 FontSize)
+#define STB_TRUETYPE_IMPLEMENTATION
+#define STB_STATIC
+#include "stb_truetype.h"
+
+stbtt_bakedchar BakedChars[128];
+u8 CharBitmap[256 * 256];
+static void
+InitFont(char* Path, back_buffer Buffer, memory_arena* Arena)
 {
-    return 0.0f;
+    Assert(Arena->Type == TRANSIENT);
+    span<u8> FontFile = Win32LoadFile(Arena, Path);
+    
+    f32 FontSize = Buffer.Width * 0.02f;
+    stbtt_BakeFontBitmap(FontFile.Memory, 0, FontSize, CharBitmap, 256, 256, 0, 128, BakedChars);
+}
+
+static f32 
+Win32TextWidth(string String, f32 FontSize)
+{
+    f32 Pixels = 0;
+    for (u32 I = 0; I < String.Length; I++)
+    {
+        char C = String.Text[I];
+        Assert(C < 128);
+        Pixels += BakedChars[C].xadvance;
+    }
+    return Pixels / 1920.0f;
+}
+
+static f32
+DrawChar(back_buffer Buffer, f32 X, f32 Y, u32 Color, char C)
+{
+    stbtt_bakedchar BakedChar = BakedChars[C];
+    int PixelX0 = (int)(X + BakedChar.xoff);
+    int PixelY0 = (int)(Y - BakedChar.yoff);
+    
+    int PixelY = PixelY0;
+    for (int TextureY = BakedChar.y0; TextureY < BakedChar.y1; TextureY++)
+    {
+        if (PixelY >= Buffer.ThreadY0 && PixelY < Buffer.ThreadY1)
+        {
+            int PixelX = PixelX0;
+            for (int TextureX = BakedChar.x0; TextureX < BakedChar.x1; TextureX++)
+            {
+                u8 Texel = CharBitmap[TextureY * 256 + TextureX];
+                
+                if (Texel && PixelX >= 0 && PixelX < Buffer.Width && PixelY >= 0 && PixelY < Buffer.Height)
+                {
+                    u32 RGB = (Texel << 24) | (Color & 0xFFFFFF);
+                    BlendPixel(Buffer, PixelX, PixelY, RGB);
+                }
+                
+                PixelX++;
+            }
+        }
+        PixelY--;
+    }
+    
+    return BakedChar.xadvance;
+}
+
+static void
+Win32Text(back_buffer Buffer, v2 Position, string String, u32 Color)
+{
+    f32 X0 = Position.X * Buffer.Width;
+    f32 Y0 = Position.Y * Buffer.Width;
+    
+    for (u32 I = 0; I < String.Length; I++)
+    {
+        char C = String.Text[I];
+        Assert(C < 128);
+        f32 CharWidth = DrawChar(Buffer, X0, Y0 + 7.0f, Color, C);
+        X0 += CharWidth;
+    }
+}
+
+#if 0
+void PackPixels(back_buffer Buffer)
+{
+    u8* R = Buffer.R;
+    u8* G = Buffer.G;
+    u8* B = Buffer.B;
+    u32* RGB = Buffer.RGB;
+    
+    u32 I = 0;
+    for (int Y = 0; Y < Buffer.Height; Y++)
+    {
+        for (int X = 0; X < Buffer.Width; X++)
+        {
+            *RGB = (R[I] << 16) | (G[I] << 8) | B[I];
+            RGB++;
+            I++;
+        }
+    }
+}
+#endif
+
+static bool
+RenderIfWorkAvailable(render_queue* Queue)
+{
+    bool DoneWork = false;
+    
+    u32 NextEntry = Queue->EntriesStarted;
+    if (NextEntry != Queue->EntryCount)
+    {
+        u32 Index = InterlockedCompareExchange((volatile LONG*)&Queue->EntriesStarted,
+                                               NextEntry + 1,
+                                               NextEntry);
+        if (Index == NextEntry)
+        {
+            render_queue_entry Entry = Queue->Entries[NextEntry];
+            SoftwareRender(Entry.RenderGroup, Entry.Buffer);
+            InterlockedIncrement((volatile LONG*)&Queue->EntriesDone);
+            DoneWork = true;
+        }
+    }
+    
+    return DoneWork;
+}
+
+static DWORD WINAPI 
+RenderThreadProc(LPVOID Param)
+{
+    render_queue* Queue = (render_queue*)Param;
+    
+    while (true)
+    {
+        if (!RenderIfWorkAvailable(Queue))
+        {
+            WaitForSingleObject(Queue->Semaphore, INFINITE);
+        }
+    }
+}
+
+static render_queue*
+CreateRenderQueueAndThreads(memory_arena* Arena, u32 ThreadCount)
+{
+    Assert(Arena->Type == PERMANENT);
+    
+    render_queue* Queue = AllocStruct(Arena, render_queue); 
+    
+    Queue->ThreadCount = ThreadCount;
+    Queue->Semaphore = CreateSemaphore(0, 0, ThreadCount, 0);
+    
+    for (u32 ThreadIndex = 0; ThreadIndex < ThreadCount; ThreadIndex++)
+    {
+        CreateThread(0, 0, RenderThreadProc, Queue, 0, 0);
+    }
+    
+    return Queue;
+}
+
+static void
+RenderMultithreaded(render_queue* Queue, render_group* RenderGroup, back_buffer* Buffer)
+{
+    u32 WorkCount = 32;
+    
+    Assert(Buffer->Height % WorkCount == 0);
+    u32 Height = Buffer->Height / WorkCount;
+    
+    for (u32 WorkIndex = 0; WorkIndex < WorkCount; WorkIndex++)
+    {
+        render_queue_entry Entry = {};
+        Entry.RenderGroup = RenderGroup;
+        Entry.Buffer = *Buffer;
+        Entry.Buffer.ThreadY0 = WorkIndex * Height;
+        Entry.Buffer.ThreadY1 = Entry.Buffer.ThreadY0 + Height;
+        Queue->Entries[WorkIndex] = Entry;
+    }
+    
+    Queue->EntryCount = WorkCount;
+    ReleaseSemaphore(Queue->Semaphore, Queue->ThreadCount, 0);
+    
+    while (Queue->EntriesDone != Queue->EntryCount)
+    {
+        RenderIfWorkAvailable(Queue);
+    }
+    
+    Queue->EntriesDone = 0;
+    Queue->EntriesStarted = 0;
+    Queue->EntryCount = 0;
 }

@@ -86,7 +86,7 @@ Button(v2 Position, v2 Size, string String)
 	PushRectangle(GlobalRenderGroup, Position, Size, Color /*, 0xFF8080FF*/);
     
     f32 TextWidth = PlatformTextWidth(String, Size.Y);
-	PushText(GlobalRenderGroup, String, V2(Position.X + 0.5f * Size.X - 0.5f * TextWidth, Position.Y), Size.Y);
+	PushText(GlobalRenderGroup, String, V2(Position.X + 0.5f * Size.X - 0.5f * TextWidth, Position.Y), 0xFFFFFF, Size.Y);
     
 	return Result;
 }
@@ -140,7 +140,7 @@ void gui_layout::Label(string Text)
 {
 	f32 Width = 0.14f;
     
-	PushText(GlobalRenderGroup, Text, V2(X, Y), 0.02f);
+	PushText(GlobalRenderGroup, Text, V2(X, Y), 0xFFFFFF, 0.02f);
 	X += Width + XPad;
 }
 

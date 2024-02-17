@@ -353,7 +353,14 @@ static void DrawMap(render_group* Group, map_desc* Map)
 {
     for (rigid_body RigidBody : Map->RigidBodies)
     {
-        PushRectangle(Group, RectOf(RigidBody), RigidBody.Color);
+        if (RigidBody.Type == RigidBody_AABB)
+        {
+            PushRectangle(Group, RectOf(RigidBody), RigidBody.Color);
+        }
+        else
+        {
+            PushCircle(Group, RigidBody.P, 0.5f * RigidBody.Size.X, RigidBody.Color);
+        }
     }
     
     for (line Line : Map->Lines)
@@ -458,7 +465,7 @@ void GameUpdateAndRender(render_group* RenderGroup, game_state* GameState, float
     
     string MemoryString = ArenaPrint(Allocator.Transient, "%u bytes Permanent, %u bytes Transient", 
                                      Allocator.Permanent->Used, Allocator.Transient->Used);
-    PushText(RenderGroup, MemoryString, V2(0.35f, 0.0f));
+    PushText(RenderGroup, MemoryString, V2(0.35f, 0.0f), 0x808080);
     
     DrawConsole(&GameState->Console, RenderGroup);
 }
