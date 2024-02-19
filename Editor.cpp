@@ -316,7 +316,7 @@ RunEditor(render_group* Group, game_state* GameState, game_input* Input, allocat
         map_element Window = { MapElem_Window };
         Window.Shape.Position = ScreenCenter;
         Window.Shape.Size = TileSize;
-        Window.Color = 0x80808080;
+        Window.Color = 0x80FFFFFF;
         Add(&Map->Elements, &Window, PArena);
     }
     
@@ -573,7 +573,7 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
                 RigidBody.P = MapElem.Shape.Position;
                 RigidBody.Size  = MapElem.Shape.Size;
                 RigidBody.InvMass = 0.0f;
-                RigidBody.Transparent = (MapElem.Type == MapElem_Window || MapElem.Type == MapElem_Laser);
+                RigidBody.Translucent = (MapElem.Type == MapElem_Window || MapElem.Type == MapElem_Laser);
                 RigidBody.Color = MapElem.Color;
                 RigidBody.ActivatedByIndex = MapElem.ActivatedBy;
                 RigidBody.ActivatedP = MapElem.ActivatedShape.Position;

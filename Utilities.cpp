@@ -346,10 +346,40 @@ static u32
 StringToU32(string String)
 {
     u32 Result = 0;
-    for (u32 I = 0; I < String.Length; I++)
+    
+    if (String.Length >= 2 && 
+        String.Text[0] == '0' &&
+        String.Text[1] == 'x')
     {
-        char C = String.Text[I];
-        Result = Result * 10 + (C - '0');
+        for (u32 I = 2; I < String.Length; I++)
+        {
+            char C = String.Text[I];
+            if (C >= 'A' && C <= 'F')
+            {
+                Result = Result * 16 + (10 + C - 'A');
+            }
+            else if (C >= 'a' && C <= 'f')
+            {
+                Result = Result * 16 + (10 + C - 'a');
+            }
+            else if (C >= '0' && C <= '9')
+            {
+                Result = Result * 16 + (C - '0');
+            }
+            else
+            {
+                Assert(0);
+            }
+        }
+    }
+    else
+    {
+        for (u32 I = 0; I < String.Length; I++)
+        {
+            char C = String.Text[I];
+            Assert(C >= '0' && C <= '9');
+            Result = Result * 10 + (C - '0');
+        }
     }
     return Result;
 }

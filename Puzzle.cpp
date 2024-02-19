@@ -54,13 +54,20 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, map_desc* Map, laser* Lase
     
     bool Done = false;
     
+    u32 Color = Laser->Color;
+    
     u32 Iter = 0;
     for (; Iter < MaxIter; Iter++)
     {
         f32 tMin = 100.0f;
+        
         ray_collision NearestCollision = {};
         u32 NearestCollisionEntityIndex = 0;
-        bool WillReflect = 0;
+        
+        bool WillReflect = false;
+        
+        bool WillContinueThrough = false;
+        u32 CollidedWithColor = 0;
         
         for (line Line : Map->Lines)
         {
@@ -78,11 +85,6 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, map_desc* Map, laser* Lase
         
         for (rigid_body& RigidBody : Map->RigidBodies)
         {
-            if (RigidBody.Transparent)
-            {
-                continue;
-            }
-            
             v2 MinCorner = RigidBody.P - 0.5f * RigidBody.Size;
             v2 MaxCorner = RigidBody.P + 0.5f * RigidBody.Size;
             
@@ -101,8 +103,14 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, map_desc* Map, laser* Lase
                 {
                     NearestCollision = Collision;
                     tMin = Collision.t;
-                    WillReflect = false;
                     NearestCollisionEntityIndex = RigidBody.EntityIndex;
+                    
+                    WillReflect = false;
+                    WillContinueThrough = (RigidBody.Translucent);
+                    if (WillContinueThrough)
+                    {
+                        CollidedWithColor = RigidBody.Color;
+                    }
                 }
             }
         }
@@ -112,7 +120,7 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, map_desc* Map, laser* Lase
             laser_beam* LaserBeam = &Result[Iter];
             LaserBeam->Start = P;
             LaserBeam->End = NearestCollision.P;
-            LaserBeam->Color = Laser->Color;
+            LaserBeam->Color = Color;
             
             if (NearestCollisionEntityIndex)
             {
@@ -123,6 +131,20 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, map_desc* Map, laser* Lase
             {
                 P = NearestCollision.P;
                 Direction = Direction - 2 * DotProduct(Direction, UnitV(NearestCollision.Normal)) * UnitV(NearestCollision.Normal);
+            }
+            else if (WillContinueThrough)
+            {
+                P = NearestCollision.P + 0.0001f * Direction;
+                
+                u8* GlassColor = (u8*)&CollidedWithColor;
+                u8* OldColor = (u8*)&Color;
+                for (int I = 0; I < 4; I++)
+                {
+                    if (OldColor[I] > GlassColor[I])
+                    {
+                        OldColor[I] = GlassColor[I];
+                    }
+                }
             }
             else
             {
@@ -141,7 +163,7 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, map_desc* Map, laser* Lase
         laser_beam* LaserBeam = &Result[Iter];
         LaserBeam->Start = P;
         LaserBeam->End = P + 10.0f * UnitV(Direction);
-        LaserBeam->Color = Laser->Color;
+        LaserBeam->Color = Color;
     }
 }
 
@@ -308,7 +330,7 @@ static void DrawMapForEditor(render_group* Group, map_desc* Map)
                 v2 MaxCorner = MapElement.Shape.Position + 0.5f * MapElement.Shape.Size;
                 
                 PushRectangle(Group, MinCorner, MapElement.Shape.Size, MapElement.Color);
-                
+#if 0
                 u32 RectStripeColor = 0x20000000;
                 for (f32 X = MinCorner.X; X <= MaxCorner.X + 0.001f; X += 0.04f)
                 {
@@ -318,6 +340,7 @@ static void DrawMapForEditor(render_group* Group, map_desc* Map)
                 {
                     PushLine(Group, V2(MinCorner.X, Y), V2(MaxCorner.X, Y), RectStripeColor, 0.002f);
                 }
+#endif
             } break;
             case MapElem_Receiver: case MapElem_Laser: case MapElem_Goal:
             {
@@ -390,8 +413,8 @@ static void DrawMap(render_group* Group, map_desc* Map)
                 PushLine(Group, LaserBeam.Start, LaserBeam.End, RGB | 0x80000000, 0.005f);
                 PushLine(Group, LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
                          RGB | 0xC0000000, 0.0025f);
-                PushLine(Group, LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
-                         RGB | 0xFF000000, 0.001f);
+                //PushLine(Group, LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
+                //RGB | 0xFF000000, 0.001f);
             }
         }
     }

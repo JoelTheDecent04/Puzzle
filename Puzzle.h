@@ -61,7 +61,7 @@ struct rigid_body
     u32 Color;
     
     //TODO: Should this be here?
-    bool Transparent;
+    bool Translucent;
     
     rigid_body_type Type;
     v2 P;
