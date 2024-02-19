@@ -20,8 +20,8 @@ struct back_buffer
     f32 Scale;
     u32* Pixels;
     
-    u32 ThreadY0;
-    u32 ThreadY1;
+    i32 ThreadY0;
+    i32 ThreadY1;
 };
 
 struct render_queue_entry
@@ -137,7 +137,7 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
     render_group RenderGroup;
     RenderGroup.ShapeCount = 0;
     
-    render_queue* RenderQueue = CreateRenderQueueAndThreads(&PermanentArena, 3);
+    render_queue* RenderQueue = CreateRenderQueueAndThreads(&PermanentArena, 0);
     
 	while (true)
 	{
@@ -324,6 +324,65 @@ DrawRotatedRectangle(back_buffer Buffer, v2 Origin, v2 XAxis, v2 YAxis, u32 Colo
             if ((Edge0 < 0) && (Edge1 < 0) && (Edge2 < 0) && (Edge3 < 0))
             {
                 Row[X] = Color;
+            }
+        }
+    }
+}
+
+
+static void
+DrawRotatedRectangleTransparent(back_buffer Buffer, v2 Origin, v2 XAxis, v2 YAxis, u32 Color)
+{
+    v2 A = Buffer.Scale * Origin;
+    v2 B = Buffer.Scale * (Origin + XAxis);
+    v2 C = Buffer.Scale * (Origin + XAxis + YAxis);
+    v2 D = Buffer.Scale * (Origin + YAxis);
+    
+    f32 MinX = Min(A.X, B.X, C.X, D.X);
+    f32 MaxX = Max(A.X, B.X, C.X, D.X);
+    f32 MinY = Min(A.Y, B.Y, C.Y, D.Y);
+    f32 MaxY = Max(A.Y, B.Y, C.Y, D.Y);
+    
+    i32 X0 = Max(0, (i32)MinX);
+    i32 X1 = Min(Buffer.Width, (i32)MaxX);
+    i32 Y0 = Max(Buffer.ThreadY0, (i32)MinY);
+    i32 Y1 = Min(Buffer.ThreadY1, (i32)MaxY);
+    
+    v2 PerpXAxis = Perp(XAxis);
+    v2 PerpYAxis = Perp(YAxis);
+    
+    __m128 Color_m128 = _mm_cvtepi32_ps(_mm_cvtepu8_epi32(*(__m128i*)&Color));
+    
+    u8 Alpha_u8 = Color >> 24;
+    f32 Alpha = (f32)Alpha_u8 / 255.0f;
+    f32 InvAlpha = 1.0f - Alpha;
+    
+    __m128 Alpha_4x = _mm_set1_ps(Alpha);
+    __m128 InvAlpha_4x = _mm_set1_ps(InvAlpha);
+    
+    __m128i Shuffle = _mm_set_epi8(0, 0, 0, 0, 
+                                   0, 0, 0, 0, 
+                                   0, 0, 0, 0,
+                                   12, 8, 4, 0);
+    
+    for (i32 Y = Y0; Y < Y1; Y++)
+    {
+        u32* Row = Buffer.Pixels + Y * Buffer.Width;
+        for (int X = X0; X < X1; X++)
+        {
+            v2 P = V2((f32)X, (f32)Y);
+            
+            f32 Edge0 = DotProduct(P - A, -1.0f * PerpXAxis);
+            f32 Edge1 = DotProduct(P - B, -1.0f * PerpYAxis);
+            f32 Edge2 = DotProduct(P - C, PerpXAxis);
+            f32 Edge3 = DotProduct(P - D, PerpXAxis);
+            
+            if ((Edge0 < 0) && (Edge1 < 0) && (Edge2 < 0) && (Edge3 < 0))
+            {
+                __m128 OldColor = _mm_cvtepi32_ps(_mm_cvtepu8_epi32(*(__m128i*)&Row[X]));
+                __m128 NewColor = _mm_add_ps(_mm_mul_ps(InvAlpha_4x, OldColor), _mm_mul_ps(Alpha_4x, Color_m128));
+                __m128i NewColor_u32 = _mm_shuffle_epi8(_mm_cvtps_epi32(NewColor), Shuffle);
+                _mm_store_ss((float*)&Row[X], _mm_castsi128_ps(NewColor_u32));Row[X] = Color;
             }
         }
     }
@@ -641,7 +700,16 @@ SoftwareRender(render_group* RenderGroup, back_buffer Buffer)
                 v2 YAxis = UnitV(Perp(XAxis)) * Shape.Line.Thickness;
                 v2 Origin = Shape.Line.Start - 0.5f * YAxis;
                 
-                DrawRotatedRectangle(Buffer, Origin, XAxis, YAxis, Shape.Color);
+                u8 Alpha = Shape.Color >> 24;
+                if (Alpha == 0xFF)
+                {
+                    DrawRotatedRectangle(Buffer, Origin, XAxis, YAxis, Shape.Color);
+                }
+                else
+                {
+                    DrawRotatedRectangleTransparent(Buffer, Origin, XAxis, YAxis, Shape.Color);
+                }
+                
             } break;
             
             case Render_Text:
@@ -666,7 +734,7 @@ InitFont(char* Path, back_buffer Buffer, memory_arena* Arena)
     Assert(Arena->Type == TRANSIENT);
     span<u8> FontFile = Win32LoadFile(Arena, Path);
     
-    f32 FontSize = Buffer.Width * 0.02f;
+    f32 FontSize = Buffer.Scale * 0.02f;
     stbtt_BakeFontBitmap(FontFile.Memory, 0, FontSize, CharBitmap, 256, 256, 0, 128, BakedChars);
 }
 
