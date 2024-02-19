@@ -1,9 +1,17 @@
-static string
-RunCommand(int ArgCount, string* Args, game_state* GameState, memory_arena* TArena)
+void AddLine(console* Console, string String);
+void ClearConsole(console* Console);
+
+static void
+RunCommand(int ArgCount, string* Args, console* Console, game_state* GameState, memory_arena* TArena)
 {
-    if (ArgCount == 0) return {};
+    if (ArgCount == 0) return;
     
     string Result = String("Unknown command");
+    
+    if (StringsAreEqual(Args[0], String("clear")))
+    {
+        ClearConsole(Console);
+    }
     
     if (StringsAreEqual(Args[0], String("null_map_elem_count")))
     {
@@ -16,7 +24,9 @@ RunCommand(int ArgCount, string* Args, game_state* GameState, memory_arena* TAre
             }
         }
         
-        Result = ArenaPrint(TArena, "%u null elements", Count);
+        string Result = ArenaPrint(TArena, "%u null elements", Count);
+        AddLine(Console, Result);
+        return;
     }
     
     if (StringsAreEqual(Args[0], String("activated")) && ArgCount == 2)
@@ -26,15 +36,49 @@ RunCommand(int ArgCount, string* Args, game_state* GameState, memory_arena* TAre
         if (EntityIndex < GameState->Map->Entities.Count)
         {
             bool Activated = GameState->Map->Entities[EntityIndex].WasActivated;
-            Result = ArenaPrint(TArena, "%u activated: %u", EntityIndex, Activated);
+            string Result = ArenaPrint(TArena, "%u activated: %u", EntityIndex, Activated);
+            AddLine(Console, Result);
         }
         else
         {
-            Result = String("Out of range");
+            AddLine(Console, String("Out of range"));
         }
     }
     
-    return Result;
+    if (StringsAreEqual(Args[0], String("color")))
+    {
+        u32 Index = GameState->Editor.SelectedElementIndex;
+        map_element* SelectedElement = GameState->Map->Elements + Index;
+        u32 NewColor = SelectedElement->Color;
+        
+        if (ArgCount == 2)
+        {
+            NewColor = StringToU32(Args[1]);
+            if (NewColor >> 24 == 0)
+            {
+                NewColor |= 0xFF000000;
+            }
+        }
+        if (ArgCount == 5)
+        {
+            u32 A = StringToU32(Args[1]);
+            u32 R = StringToU32(Args[2]);
+            u32 G = StringToU32(Args[3]);
+            u32 B = StringToU32(Args[4]);
+            
+            Assert(A < 256);
+            Assert(R < 256);
+            Assert(G < 256);
+            Assert(B < 256);
+            
+            NewColor = (A << 24) | (R << 16) | (G << 8) | B;
+        }
+        
+        string Result = ArenaPrint(TArena, "Map element %u has color 0x%08x", Index, NewColor);
+        AddLine(Console, Result);
+        
+        SelectedElement->Color = NewColor;
+    }
 }
 
 static void
@@ -50,6 +94,16 @@ AddLine(console* Console, string String)
     free(Console->History[MaxHistory - 1].Text);
     memmove(Console->History + 1, Console->History, sizeof(string) * (MaxHistory - 1));
     Console->History[0] = NewLine;
+}
+
+static void
+ClearConsole(console* Console)
+{
+    for (string& String : Console->History)
+    {
+        free(String.Text);
+        String = {};
+    }
 }
 
 static void
@@ -95,10 +149,9 @@ ParseAndRunCommand(console* Console, string Command, game_state* GameState, memo
         ArgCount++;
     }
     
-    string Result = RunCommand(ArgCount, Args, GameState, TArena);
+    
     AddLine(Console, Command);
-    AddLine(Console, Result);
-    //TODO: This is probably not ideal
+    RunCommand(ArgCount, Args, Console, GameState, TArena);
 }
 
 static void
