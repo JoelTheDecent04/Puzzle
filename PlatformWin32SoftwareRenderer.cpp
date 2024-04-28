@@ -137,7 +137,7 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
     render_group RenderGroup;
     RenderGroup.ShapeCount = 0;
     
-    render_queue* RenderQueue = CreateRenderQueueAndThreads(&PermanentArena, 0);
+    render_queue* RenderQueue = CreateRenderQueueAndThreads(&PermanentArena, 7);
     
 	while (true)
 	{
@@ -288,6 +288,23 @@ KeyboardAndMouseInputState(input_state* InputState, HWND Window)
     }
 }
 
+static inline u32
+BlendColor(u32 A, u32 B, f32 Alpha)
+{
+    u32 Result = 0;
+    
+    u8* pA = (u8*)&A;
+    u8* pB = (u8*)&B;
+    u8* pResult = (u8*)&Result;
+    
+    for (int I = 0; I < 4; I++)
+    {
+        pResult[I] = (1.0f - Alpha) * pA[I] + Alpha * pB[I];
+    }
+    
+    return Result;
+}
+
 static void
 DrawRotatedRectangle(back_buffer Buffer, v2 Origin, v2 XAxis, v2 YAxis, u32 Color)
 {
@@ -306,8 +323,8 @@ DrawRotatedRectangle(back_buffer Buffer, v2 Origin, v2 XAxis, v2 YAxis, u32 Colo
     i32 Y0 = Max(Buffer.ThreadY0, (i32)MinY);
     i32 Y1 = Min(Buffer.ThreadY1, (i32)MaxY);
     
-    v2 PerpXAxis = Perp(XAxis);
-    v2 PerpYAxis = Perp(YAxis);
+    v2 PerpXAxis = UnitV(Perp(XAxis));
+    v2 PerpYAxis = UnitV(Perp(YAxis));
     
     for (i32 Y = Y0; Y < Y1; Y++)
     {
@@ -319,11 +336,20 @@ DrawRotatedRectangle(back_buffer Buffer, v2 Origin, v2 XAxis, v2 YAxis, u32 Colo
             f32 Edge0 = DotProduct(P - A, -1.0f * PerpXAxis);
             f32 Edge1 = DotProduct(P - B, -1.0f * PerpYAxis);
             f32 Edge2 = DotProduct(P - C, PerpXAxis);
-            f32 Edge3 = DotProduct(P - D, PerpXAxis);
+            f32 Edge3 = DotProduct(P - D, PerpYAxis);
             
-            if ((Edge0 < 0) && (Edge1 < 0) && (Edge2 < 0) && (Edge3 < 0))
+            f32 PixelsOutside = Max(Edge0, Edge1, Edge2, Edge3);
+            
+            if (PixelsOutside < 0.0f)
             {
-                Row[X] = Color;
+                f32 PixelsInside = -PixelsOutside;
+                
+                float Alpha = 1.0f;
+                if (PixelsInside < 1.0f)
+                {
+                    Alpha = PixelsInside;
+                }
+                Row[X] = BlendColor(Row[X], Color, Alpha);
             }
         }
     }
@@ -370,7 +396,7 @@ DrawRotatedRectangleTransparent(back_buffer Buffer, v2 Origin, v2 XAxis, v2 YAxi
         u32* Row = Buffer.Pixels + Y * Buffer.Width;
         for (int X = X0; X < X1; X++)
         {
-            v2 P = V2((f32)X, (f32)Y);
+            v2 P = V2((f32)X + 0.5f, (f32)Y + 0.5f);
             
             f32 Edge0 = DotProduct(P - A, -1.0f * PerpXAxis);
             f32 Edge1 = DotProduct(P - B, -1.0f * PerpYAxis);
@@ -382,7 +408,7 @@ DrawRotatedRectangleTransparent(back_buffer Buffer, v2 Origin, v2 XAxis, v2 YAxi
                 __m128 OldColor = _mm_cvtepi32_ps(_mm_cvtepu8_epi32(*(__m128i*)&Row[X]));
                 __m128 NewColor = _mm_add_ps(_mm_mul_ps(InvAlpha_4x, OldColor), _mm_mul_ps(Alpha_4x, Color_m128));
                 __m128i NewColor_u32 = _mm_shuffle_epi8(_mm_cvtps_epi32(NewColor), Shuffle);
-                _mm_store_ss((float*)&Row[X], _mm_castsi128_ps(NewColor_u32));Row[X] = Color;
+                _mm_store_ss((float*)&Row[X], _mm_castsi128_ps(NewColor_u32));
             }
         }
     }
@@ -877,7 +903,7 @@ CreateRenderQueueAndThreads(memory_arena* Arena, u32 ThreadCount)
 static void
 RenderMultithreaded(render_queue* Queue, render_group* RenderGroup, back_buffer* Buffer)
 {
-    u32 WorkCount = 32;
+    u32 WorkCount = 1;
     
     Assert(Buffer->Height % WorkCount == 0);
     u32 Height = Buffer->Height / WorkCount;
