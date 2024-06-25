@@ -6,6 +6,21 @@
 struct v2 { f32 X, Y; };
 struct v2i { i32 X, Y; };
 
+struct v4
+{
+    union
+    {
+        struct
+        {
+            f32 X, Y, Z, W;
+        };
+        struct
+        {
+            f32 R, G, B, A;
+        };
+    };
+};
+
 inline v2 V2(f32 X, f32 Y)
 {
 	v2 Result = {X, Y};
@@ -16,6 +31,12 @@ inline v2 V2(i32 X, i32 Y)
 {
 	v2 Result = {(f32)X, (f32)Y};
 	return Result;
+}
+
+inline v4 V4(f32 X, f32 Y, f32 Z, f32 W)
+{
+    v4 Result = {X, Y, Z, W};
+    return Result;
 }
 
 inline f32

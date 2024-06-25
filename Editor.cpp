@@ -348,7 +348,7 @@ RunEditor(render_group* Group, game_state* GameState, game_input* Input, allocat
         Layout.Label(ArenaPrint(TArena, "%u", SelectedElement->ActivatedBy));
         
         Layout.NextRow();
-        char* CurrentStateText = Editor->EditingTheActivatedState ? "Active" : "Unactive";
+        const char* CurrentStateText = Editor->EditingTheActivatedState ? "Active" : "Unactive";
         if (Layout.Button(CurrentStateText))
         {
             Editor->EditingTheActivatedState = !Editor->EditingTheActivatedState;
@@ -602,6 +602,9 @@ CreateComponents(map_desc* Map, memory_arena* MapArena)
                 Laser.ActivatedByIndex = MapElem.ActivatedBy;
                 
                 LaserIndex = Add(&Lasers, Laser);
+            }
+            default:
+            {
             }
         }
         

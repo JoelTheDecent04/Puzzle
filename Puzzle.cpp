@@ -413,8 +413,8 @@ static void DrawMap(render_group* Group, map_desc* Map)
                 PushLine(Group, LaserBeam.Start, LaserBeam.End, RGB | 0x80000000, 0.005f);
                 PushLine(Group, LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
                          RGB | 0xC0000000, 0.0025f);
-                //PushLine(Group, LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
-                //RGB | 0xFF000000, 0.001f);
+                PushLine(Group, LaserBeam.Start - 0.002f * Direction, LaserBeam.End + 0.002f * Direction, 
+                         RGB | 0xFF000000, 0.001f);
             }
         }
     }
@@ -488,7 +488,7 @@ void GameUpdateAndRender(render_group* RenderGroup, game_state* GameState, float
     
     string MemoryString = ArenaPrint(Allocator.Transient, "%u bytes Permanent, %u bytes Transient", 
                                      Allocator.Permanent->Used, Allocator.Transient->Used);
-    PushText(RenderGroup, MemoryString, V2(0.35f, 0.0f), 0x808080);
+    PushText(RenderGroup, MemoryString, V2(0.35f, 0.0f), 0x000000);
     
     DrawConsole(&GameState->Console, RenderGroup);
 }
