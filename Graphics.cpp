@@ -62,3 +62,14 @@ PushText(render_group* Group, string String, v2 Position, u32 Color = 0xFFFFFFFF
     Group->Shapes[Group->ShapeCount++] = Shape;
     Assert(Group->ShapeCount <= ArrayCount(Group->Shapes));
 }
+
+static void
+PushBackground(render_group* Group, v2 Position, v2 Size, u32 Color)
+{
+    render_shape Shape = {Render_Background};
+    Shape.Rectangle.Position = Position;
+    Shape.Rectangle.Size = Size;
+    Shape.Color = Color;
+    Group->Shapes[Group->ShapeCount++] = Shape;
+    Assert(Group->ShapeCount <= ArrayCount(Group->Shapes));
+}

@@ -18,8 +18,6 @@
 #define STBTT_STATIC
 #include "stb_truetype.h"
 
-#define DEBUG 1
-
 memory_arena GlobalDebugArena;
 #define LOG(...) \
 OutputDebugStringA(ArenaPrint(&GlobalDebugArena, __VA_ARGS__).Text)
@@ -78,7 +76,7 @@ void DrawText(allocator Allocator, d3d11_device D3D11, font_texture Font, string
 
 static bool GlobalWindowDidResize;
 
-void DirectX11Render(render_group* Group, d3d11_device D3D11, allocator Allocator, d3d11_shader QuadShader, d3d11_shader TextShader, font_texture Font);
+void DirectX11Render(render_group* Group, d3d11_device D3D11, allocator Allocator, d3d11_shader QuadShader, d3d11_shader TextShader, d3d11_shader BackgroundShader, font_texture Font);
 
 d3d11_device CreateD3D11Device()
 {
@@ -157,7 +155,7 @@ IDXGISwapChain1* CreateD3D11SwapChain(ID3D11Device1* Device, HWND Window)
     
     DXGI_SWAP_CHAIN_DESC1 SwapChainDesc = {};
     SwapChainDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
-    SwapChainDesc.SampleDesc.Count = 2;
+    SwapChainDesc.SampleDesc.Count = 1;
     SwapChainDesc.SampleDesc.Quality = 0;
     SwapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     SwapChainDesc.BufferCount = 2;
@@ -323,6 +321,8 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
     
     d3d11_shader Shader = CreateShader(L"assets/shaders.hlsl", D3D11.Device, InputElementDesc, ArrayCount(InputElementDesc));
     
+    d3d11_shader BackgroundShader = CreateShader(L"assets/background.hlsl", D3D11.Device, InputElementDesc, ArrayCount(InputElementDesc));
+    
     D3D11_INPUT_ELEMENT_DESC FontShaderInputElementDesc[] = 
     {
         {"POS", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
@@ -429,7 +429,9 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
         Input.Movement = CurrentInputState.Movement;
         
         if (LengthSq(Input.Movement) > 1.0f)
+        {
             Input.Movement = UnitV(Input.Movement);
+        }
         
         Input.Cursor = CurrentInputState.Cursor;
         Input.TextInput = (char*)GlobalTextInput.c_str();
@@ -454,7 +456,7 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
         D3D11.DeviceContext->VSSetShader(Shader.VertexShader, 0, 0);
         D3D11.DeviceContext->PSSetShader(Shader.PixelShader, 0, 0);
         
-        DirectX11Render(&RenderGroup, D3D11, Allocator, Shader, FontShader, FontTexture);
+        DirectX11Render(&RenderGroup, D3D11, Allocator, Shader, FontShader, BackgroundShader, FontTexture);
         
         SwapChain->Present(1, 0);
         //---------------------------
@@ -475,10 +477,11 @@ int WINAPI wWinMain(HINSTANCE Instance, HINSTANCE, LPWSTR CommandLine, int ShowC
         {
             QueryPerformanceCounter(&PerformanceCount);
         }
+        
     }
 }
 
-void DirectX11Render(render_group* Group, d3d11_device D3D11, allocator Allocator, d3d11_shader QuadShader, d3d11_shader TextShader, font_texture Font)
+void DirectX11Render(render_group* Group, d3d11_device D3D11, allocator Allocator, d3d11_shader QuadShader, d3d11_shader TextShader, d3d11_shader BackgroundShader, font_texture Font)
 {
     for (u32 Index = 0; Index < Group->ShapeCount; Index++)
     {
@@ -529,6 +532,17 @@ void DirectX11Render(render_group* Group, d3d11_device D3D11, allocator Allocato
                 D3D11.DeviceContext->VSSetShader(TextShader.VertexShader, 0, 0);
                 D3D11.DeviceContext->PSSetShader(TextShader.PixelShader, 0, 0);
                 DrawText(Allocator, D3D11, Font, Shape.Text.String, Shape.Text.Position, Color);
+            } break;
+            case Render_Background:
+            {
+                v2 Origin = Shape.Rectangle.Position;
+                v2 XAxis = V2(Shape.Rectangle.Size.X, 0.0f);
+                v2 YAxis = V2(0.0f, Shape.Rectangle.Size.Y);
+                
+                D3D11.DeviceContext->IASetInputLayout(BackgroundShader.InputLayout);
+                D3D11.DeviceContext->VSSetShader(BackgroundShader.VertexShader, 0, 0);
+                D3D11.DeviceContext->PSSetShader(BackgroundShader.PixelShader, 0, 0);
+                DrawQuad(D3D11, Origin + YAxis, Origin + YAxis + XAxis, Origin, Origin + XAxis, Color);
             } break;
             default: Assert(0);
         }
