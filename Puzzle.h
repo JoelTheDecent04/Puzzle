@@ -159,10 +159,24 @@ struct map_editor
     map_editor_state State;
 };
 
+struct console;
+struct game_state;
+
+typedef void (*console_command_callback)(int ArgCount, string* Args, console* Console, game_state* GameState, memory_arena* Arena);
+
+struct console_command
+{
+    string Command;
+    console_command_callback Callback;
+};
+
 struct console
 {
     f32 Height;
     f32 TargetHeight;
+    
+    console_command Commands[64];
+    u64 CommandCount;
     
     string History[16];
     
@@ -223,7 +237,8 @@ enum render_type
     Render_Rectangle,
     Render_Circle,
     Render_Line,
-    Render_Text
+    Render_Text,
+    Render_Background
 };
 
 struct render_shape

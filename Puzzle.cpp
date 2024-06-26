@@ -391,17 +391,19 @@ static void DrawMap(render_group* Group, map_desc* Map)
         PushLine(Group, Line.Start, Line.Start + Line.Offset, Line.Color, 0.01f);
     }
     
-    for (laser& Laser : Map->Lasers)
+    for (u32 LaserIndex = 1; LaserIndex < Map->Lasers.Count; LaserIndex++)
     {
-        v2 LaserSize = V2(0.01f, 0.01f);
-        PushRectangle(Group, Laser.Position - 0.5f * LaserSize, LaserSize, Laser.Color);
+        laser* Laser = Map->Lasers + LaserIndex;
         
-        bool IsActive = (Laser.ActivatedByIndex == 0) || Map->Entities[Laser.ActivatedByIndex].WasActivated;
+        v2 LaserSize = V2(0.01f, 0.01f);
+        PushRectangle(Group, Laser->Position - 0.5f * LaserSize, LaserSize, Laser->Color);
+        
+        bool IsActive = (Laser->ActivatedByIndex == 0) || Map->Entities[Laser->ActivatedByIndex].WasActivated;
         if (IsActive)
         {
             laser_beam LaserBeams[10] = {};
             //TODO: Get count of laser beams of result
-            CalculateReflections(LaserBeams, ArrayCount(LaserBeams), Map, &Laser);
+            CalculateReflections(LaserBeams, ArrayCount(LaserBeams), Map, Laser);
             
             for (laser_beam LaserBeam : LaserBeams)
             {
@@ -433,8 +435,9 @@ static void
 DrawGame(render_group* Group, game_state* GameState, memory_arena* Arena)
 {
     //Background
-    PushRectangle(Group, V2(0, 0), V2(1.0f, ScreenTop), 0xFF4040C0);
+    PushBackground(Group, V2(0, 0), V2(1.0f, ScreenTop), 0xFF4040C0);
     
+    /*
     u32 BackgroundStripeColor = 0x20FFFFFF;
     f32 LineWidth = 0.002f;
     for (f32 X = 0.0f; X < 1.0f; X += 0.04f)
@@ -445,6 +448,7 @@ DrawGame(render_group* Group, game_state* GameState, memory_arena* Arena)
     {
         PushRectangle(Group, V2(0.0f, Y - LineWidth), V2(1.0f, LineWidth), BackgroundStripeColor);
     }
+    */
     
     if (GameState->Editing)
     {
@@ -484,7 +488,7 @@ void GameUpdateAndRender(render_group* RenderGroup, game_state* GameState, float
         DrawGame(RenderGroup, GameState, Allocator.Transient);
     }
     
-    PushText(RenderGroup, ArenaPrint(Allocator.Transient, "Map %u", GameState->MapIndex), V2(0, 0));
+    PushText(RenderGroup, ArenaPrint(Allocator.Transient, "Map %u", GameState->MapIndex), V2(0, 0), 0x808080);
     
     string MemoryString = ArenaPrint(Allocator.Transient, "%u bytes Permanent, %u bytes Transient", 
                                      Allocator.Permanent->Used, Allocator.Transient->Used);
