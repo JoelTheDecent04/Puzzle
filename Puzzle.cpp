@@ -9,6 +9,27 @@
 
 void PhysicsUpdate(span<rigid_body> RigidBodies, f32 DeltaTime, v2 Movement, rigid_body* Controlling);
 
+u32 GetColorOfEntity(map_desc* Map, u32 EntityIndex)
+{
+    u32 Result = 0;
+    
+    entity* Entity = Map->Entities + EntityIndex;
+    if (Entity->RigidBodyIndex)
+    {
+        Result = Map->RigidBodies[Entity->RigidBodyIndex].Color;
+    }
+    else if (Entity->LineIndex)
+    {
+        Result = Map->Lines[Entity->LineIndex].Color;
+    }
+    else if (Entity->LaserIndex)
+    {
+        Result = Map->Lasers[Entity->LaserIndex].Color;
+    }
+    
+    return Result;
+}
+
 struct ray_collision
 {
     bool DidHit;
@@ -124,7 +145,10 @@ CalculateReflections(laser_beam* Result, u32 MaxIter, map_desc* Map, laser* Lase
             
             if (NearestCollisionEntityIndex)
             {
-                Map->Entities[NearestCollisionEntityIndex].IsActivated = true;
+                if (Color == GetColorOfEntity(Map, NearestCollisionEntityIndex))
+                {
+                    Map->Entities[NearestCollisionEntityIndex].IsActivated = true;
+                }
             }
             
             if (WillReflect)
@@ -330,7 +354,7 @@ static void DrawMapForEditor(render_group* Group, map_desc* Map)
                 v2 MaxCorner = MapElement.Shape.Position + 0.5f * MapElement.Shape.Size;
                 
                 PushRectangle(Group, MinCorner, MapElement.Shape.Size, MapElement.Color);
-#if 0
+#if 1
                 u32 RectStripeColor = 0x20000000;
                 for (f32 X = MinCorner.X; X <= MaxCorner.X + 0.001f; X += 0.04f)
                 {
