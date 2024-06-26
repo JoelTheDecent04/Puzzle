@@ -1,0 +1,11 @@
+*.idb
+*.pdb
+*.obj
+*.exe
+screenshots/
+maps/
+build/
+.vs/
+compileall.bat
+build.bat
+Puzzle/
