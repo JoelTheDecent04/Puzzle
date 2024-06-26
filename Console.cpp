@@ -1,42 +1,47 @@
 void AddLine(console* Console, string String);
 void ClearConsole(console* Console);
 
-static void
-RunCommand(int ArgCount, string* Args, console* Console, game_state* GameState, memory_arena* TArena)
+#define CONSOLE_COMMAND(Console, Command) \
+AddCommand(Console, String(#Command), Command_ ## Command)
+
+void AddCommand(console* Console, string Command, console_command_callback Callback)
 {
-    if (ArgCount == 0) return;
-    
-    string Result = String("Unknown command");
-    
-    if (StringsAreEqual(Args[0], String("clear")))
+    Console->Commands[Console->CommandCount].Command = Command;
+    Console->Commands[Console->CommandCount].Callback = Callback;
+    Console->CommandCount++;
+    Assert(Console->CommandCount < ArrayCount(Console->Commands));
+}
+
+void Command_null_map_elem_count(int ArgCount, string* Args, console* Console, game_state* GameState, memory_arena* Arena)
+{
+    u32 Count = 0;
+    for (map_element& MapElem : GameState->Map->Elements)
     {
-        ClearConsole(Console);
-    }
-    
-    if (StringsAreEqual(Args[0], String("null_map_elem_count")))
-    {
-        u32 Count = 0;
-        for (map_element& MapElem : GameState->Map->Elements)
+        if (MapElem.Type == MapElem_Null)
         {
-            if (MapElem.Type == MapElem_Null)
-            {
-                Count++;
-            }
+            Count++;
         }
-        
-        string Result = ArenaPrint(TArena, "%u null elements", Count);
-        AddLine(Console, Result);
-        return;
     }
     
-    if (StringsAreEqual(Args[0], String("activated")) && ArgCount == 2)
+    string Result = ArenaPrint(Arena, "%u null elements", Count);
+    AddLine(Console, Result);
+}
+
+void Command_clear(int ArgCount, string* Args, console* Console, game_state* GameState, memory_arena* Arena)
+{
+    ClearConsole(Console);
+}
+
+void Command_activated(int ArgCount, string* Args, console* Console, game_state* GameState, memory_arena* Arena)
+{
+    if (ArgCount == 2)
     {
         u32 EntityIndex = StringToU32(Args[1]);
         
         if (EntityIndex < GameState->Map->Entities.Count)
         {
             bool Activated = GameState->Map->Entities[EntityIndex].WasActivated;
-            string Result = ArenaPrint(TArena, "%u activated: %u", EntityIndex, Activated);
+            string Result = ArenaPrint(Arena, "%u activated: %u", EntityIndex, Activated);
             AddLine(Console, Result);
         }
         else
@@ -44,41 +49,41 @@ RunCommand(int ArgCount, string* Args, console* Console, game_state* GameState, 
             AddLine(Console, String("Out of range"));
         }
     }
+}
+
+void Command_color(int ArgCount, string* Args, console* Console, game_state* GameState, memory_arena* Arena)
+{
+    u32 Index = GameState->Editor.SelectedElementIndex;
+    map_element* SelectedElement = GameState->Map->Elements + Index;
+    u32 NewColor = SelectedElement->Color;
     
-    if (StringsAreEqual(Args[0], String("color")))
+    if (ArgCount == 2)
     {
-        u32 Index = GameState->Editor.SelectedElementIndex;
-        map_element* SelectedElement = GameState->Map->Elements + Index;
-        u32 NewColor = SelectedElement->Color;
-        
-        if (ArgCount == 2)
+        NewColor = StringToU32(Args[1]);
+        if (NewColor >> 24 == 0)
         {
-            NewColor = StringToU32(Args[1]);
-            if (NewColor >> 24 == 0)
-            {
-                NewColor |= 0xFF000000;
-            }
+            NewColor |= 0xFF000000;
         }
-        if (ArgCount == 5)
-        {
-            u32 A = StringToU32(Args[1]);
-            u32 R = StringToU32(Args[2]);
-            u32 G = StringToU32(Args[3]);
-            u32 B = StringToU32(Args[4]);
-            
-            Assert(A < 256);
-            Assert(R < 256);
-            Assert(G < 256);
-            Assert(B < 256);
-            
-            NewColor = (A << 24) | (R << 16) | (G << 8) | B;
-        }
-        
-        string Result = ArenaPrint(TArena, "Map element %u has color 0x%08x", Index, NewColor);
-        AddLine(Console, Result);
-        
-        SelectedElement->Color = NewColor;
     }
+    if (ArgCount == 5)
+    {
+        u32 A = StringToU32(Args[1]);
+        u32 R = StringToU32(Args[2]);
+        u32 G = StringToU32(Args[3]);
+        u32 B = StringToU32(Args[4]);
+        
+        Assert(A < 256);
+        Assert(R < 256);
+        Assert(G < 256);
+        Assert(B < 256);
+        
+        NewColor = (A << 24) | (R << 16) | (G << 8) | B;
+    }
+    
+    string Result = ArenaPrint(Arena, "Map element %u has color 0x%08x", Index, NewColor);
+    AddLine(Console, Result);
+    
+    SelectedElement->Color = NewColor;
 }
 
 static void
@@ -149,14 +154,44 @@ ParseAndRunCommand(console* Console, string Command, game_state* GameState, memo
         ArgCount++;
     }
     
-    
     AddLine(Console, Command);
-    RunCommand(ArgCount, Args, Console, GameState, TArena);
+    
+    if (ArgCount > 0)
+    {
+        if (StringsAreEqual(Args[0], String("help")))
+        {
+            for (u64 CommandIndex = 0; CommandIndex < Console->CommandCount; CommandIndex++)
+            {
+                AddLine(Console, Console->Commands[CommandIndex].Command);
+            }
+        }
+        else
+        {
+            for (u64 CommandIndex = 0; CommandIndex < Console->CommandCount; CommandIndex++)
+            {
+                if (StringsAreEqual(Console->Commands[CommandIndex].Command, Args[0]))
+                {
+                    Console->Commands[CommandIndex].Callback(ArgCount, Args, Console, GameState, TArena);
+                    return;
+                }
+            }
+            
+            AddLine(Console, String("Invalid Command"));
+        }
+    }
 }
 
 static void
 UpdateConsole(game_state* GameState, console* Console, game_input* Input, memory_arena* TArena, f32 DeltaTime)
 {
+    if (Console->CommandCount == 0)
+    {
+        CONSOLE_COMMAND(Console, null_map_elem_count);
+        CONSOLE_COMMAND(Console, clear);
+        CONSOLE_COMMAND(Console, activated);
+        CONSOLE_COMMAND(Console, color);
+    }
+    
     //Check if toggled
     bool IsOpen = (Console->TargetHeight > 0.0f);
     if (Input->ButtonDown & Button_Console)
