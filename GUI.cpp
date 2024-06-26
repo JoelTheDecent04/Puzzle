@@ -138,7 +138,7 @@ void gui_layout::Label(const char* Text)
 
 void gui_layout::Label(string Text)
 {
-	f32 Width = 0.14f;
+	f32 Width = 0.1f;
     
 	PushText(GlobalRenderGroup, Text, V2(X, Y), 0xFFFFFF, 0.02f);
 	X += Width + XPad;

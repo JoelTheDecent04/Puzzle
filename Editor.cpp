@@ -421,6 +421,15 @@ RunEditor(render_group* Group, game_state* GameState, game_input* Input, allocat
                 SelectedElement->Angle += 0.125f;
             }
         }
+        
+        Layout.NextRow();
+        
+        Layout.Label("Color");
+        PushRectangle(Group, V2(Layout.X, Layout.Y), V2(0.02f, 0.02f), SelectedElement->Color);
+        Layout.X += 0.025f;
+        Layout.Label(ArenaPrint(TArena, "0x%x", SelectedElement->Color));
+        
+        Layout.NextRow();
     }
     
     if (SelectedElement)
