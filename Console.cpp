@@ -154,7 +154,8 @@ ParseAndRunCommand(console* Console, string Command, game_state* GameState, memo
         ArgCount++;
     }
     
-    AddLine(Console, Command);
+    string Input = ArenaPrint(TArena, "> %.*s", Console->InputLength, Console->Input);
+    AddLine(Console, Input);
     
     if (ArgCount > 0)
     {
@@ -236,7 +237,7 @@ UpdateConsole(game_state* GameState, console* Console, game_input* Input, memory
         
         if (Input->ButtonDown & Button_Right)
         {
-            Console->InputCursor = Min(Console->InputLength, Console->InputCursor + 1);
+            Console->InputCursor = Min((i32)Console->InputLength, (i32)(Console->InputCursor + 1));
         }
         
         //Clear input to prevent other actions
@@ -286,7 +287,7 @@ UpdateConsole(game_state* GameState, console* Console, game_input* Input, memory
     }
 }
 static void
-DrawConsole(console* Console, render_group* RenderGroup)
+DrawConsole(console* Console, render_group* RenderGroup, memory_arena* Arena)
 {
     f32 ScreenTop = 0.5625;
     
@@ -301,7 +302,11 @@ DrawConsole(console* Console, render_group* RenderGroup)
     PushRectangle(RenderGroup, V2(X0, Y0 + InputTextHeight), V2(Width, Console->Height), 0xC0000000);
     PushRectangle(RenderGroup, V2(X0, Y0), V2(Width, InputTextHeight), 0xFF000000);
     
-    string InputA = {Console->Input, (u32)Console->InputCursor};
+    string Input = ArenaPrint(Arena, "> %.*s", Console->InputLength, Console->Input);
+    
+    //Find cursor position
+    Assert(Console->InputCursor + 2 <= Input.Length);
+    string InputA = {Input.Text, Console->InputCursor + 2}; //Adjust for "> "
     
     f32 Pad = 0.002f;
     X0 += Pad;
@@ -318,7 +323,8 @@ DrawConsole(console* Console, render_group* RenderGroup)
     
     u32 TextColor = 0xFFFFFF;
     
-    string Input = {Console->Input, (u32)Console->InputLength};
+    
+    
     PushText(RenderGroup, Input, V2(X0, Y0), TextColor, InputTextHeight);
     
     for (string History : Console->History)

@@ -518,5 +518,5 @@ void GameUpdateAndRender(render_group* RenderGroup, game_state* GameState, float
                                      Allocator.Permanent->Used, Allocator.Transient->Used);
     PushText(RenderGroup, MemoryString, V2(0.35f, 0.0f), 0x000000);
     
-    DrawConsole(&GameState->Console, RenderGroup);
+    DrawConsole(&GameState->Console, RenderGroup, Allocator.Transient);
 }

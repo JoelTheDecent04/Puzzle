@@ -181,8 +181,8 @@ struct console
     string History[16];
     
     char Input[256];
-    int InputLength;
-    int InputCursor;
+    u32 InputLength;
+    u32 InputCursor;
     
     bool CursorOn;
     f32  CursorCountdown;
