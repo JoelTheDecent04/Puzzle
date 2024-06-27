@@ -231,6 +231,11 @@ inline int RoundUpToMultipleOf(int Multiple, float Value)
 	return (((int)Value + Multiple - 1) / Multiple) * Multiple;
 }
 
+inline f32 RoundUpToMultipleOf(f32 Multiple, f32 Value)
+{
+    return Ceil(Value / Multiple) * Multiple;
+}
+
 //
 //Other
 //

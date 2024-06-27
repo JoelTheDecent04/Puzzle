@@ -138,10 +138,13 @@ void gui_layout::Label(const char* Text)
 
 void gui_layout::Label(string Text)
 {
-	f32 Width = 0.1f;
+    f32 LabelFontSize = 0.02f;
     
-	PushText(GlobalRenderGroup, Text, V2(X, Y), 0xFFFFFF, 0.02f);
-	X += Width + XPad;
+    f32 Width = PlatformTextWidth(Text, LabelFontSize);
+    Width = RoundUpToMultipleOf(0.06f, Width + XPad);
+    
+    PushText(GlobalRenderGroup, Text, V2(X, Y), 0xFFFFFF, 0.02f);
+    X += Width + XPad;
 }
 
 void gui_layout::NextRow()
